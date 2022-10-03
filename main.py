@@ -11,8 +11,8 @@ pd.set_option('display.max_columns', 200)
 pd.set_option('display.expand_frame_repr', False)
 
 # Load Options Data
-df_calls = pd.read_excel("SX5E_Calls_Dec22.xlsx", header=0).dropna()
-df_puts = pd.read_excel("SX5E_Puts_Dec22.xlsx", header=0).dropna()
+df_calls = pd.read_excel("datas/SX5E_Calls_Dec22.xlsx", header=0).dropna()
+df_puts = pd.read_excel("datas/SX5E_Puts_Dec22.xlsx", header=0).dropna()
 df = pd.concat([df_calls, df_puts])
 
 # Set Spot Value & Date
