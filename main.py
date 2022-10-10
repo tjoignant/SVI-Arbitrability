@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import black_scholes
 
 # Inputs
-spot = 3318.20
-spot_date = dt.datetime(day=30, month=9, year=2022)
+spot = 3375.46
+spot_date = dt.datetime(day=7, month=10, year=2022)
 min_volume = 1
 
 # Set Pandas Display Settings
@@ -19,7 +19,7 @@ pd.set_option('display.expand_frame_repr', False)
 # Load Options Data
 df_list = []
 folder = 'datas'
-for file in os.listdir(folder):
+for file in sorted((f for f in os.listdir(folder) if not f.startswith(".")), key=str.lower):
     df_list.append(pd.read_excel(f"{folder}/{file}", header=0).dropna())
 df = pd.concat(df_list)
 
@@ -34,6 +34,7 @@ df = df.reset_index(drop=True)
 # Parse The Option's Type, Strike Percentage, Underlying & Maturity
 df["Type"] = df["Ticker"].apply(lambda x: "Call" if "C" in x.split(" ")[2] else "Put")
 df["Underlying"] = df["Ticker"].apply(lambda x: x.split(" ")[0])
+df["Underlying"] = df["Underlying"].apply(lambda x: x[1:-1] if x[0] == "W" else x)
 df["Maturity"] = df["Ticker"].apply(lambda x: dt.datetime.strptime(x.split(" ")[1], "%m/%d/%y"))
 df["Strike Perc"] = df["Strike"] / df["Spot"]
 
@@ -56,44 +57,48 @@ for udl in df["Underlying"].unique():
             for type in df["Type"].unique():
                 df_check = df[(df["Underlying"] == udl) & (df["Maturity"] == maturity) & (df["Type"] == type)].copy()
                 df_check = df_check.sort_values(by="Strike", ascending=True)
-                if type == "Call":
-                    df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(-1) * \
-                                            ((df_check["Strike"].shift(-1) - df_check["Strike"]) /
-                                             (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)) + 1) + \
-                                            df_check["Mid"].shift(-2) * (
-                                                    (df_check["Strike"].shift(-1) - df_check["Strike"]) /
-                                                    (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)))
-                    id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
-                    id_to_remove = []
-                    for row_id in id_with_arbitrage:
-                        df_select = df_check.iloc[
-                            [row_id, max(row_id + 1, df_check.index[-1]), max(row_id + 2, df_check.index[-1])]]
-                        id_to_remove.append(df_select[['Volm']].idxmin()[0])
-                else:
-                    df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
-                                            (1 + (df_check["Strike"].shift(1) - df_check["Strike"]) / (
-                                                    df_check["Strike"].shift(2) - df_check["Strike"].shift(1))) + \
-                                            df_check["Mid"].shift(2) * ((
-                                                        df_check["Strike"].shift(1) - df_check["Strike"]) / (
-                                                                                df_check["Strike"].shift(2) -
-                                                                                df_check["Strike"].shift(1)))
-                    id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
-                    id_to_remove = []
-                    for row_id in id_with_arbitrage:
-                        df_select = df_check.iloc[[row_id, max(row_id - 1, df_check.index[0]), max(row_id - 2, df_check.index[0])]]
-                        id_to_remove.append(df_select[['Volm']].idxmin()[0])
-                index_list = list(set(index_list + id_to_remove))
+                if len(df_check.index) >= 3:
+                    if type == "Call":
+                        df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(-1) * \
+                                                ((df_check["Strike"].shift(-1) - df_check["Strike"]) /
+                                                 (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)) + 1) + \
+                                                df_check["Mid"].shift(-2) * (
+                                                        (df_check["Strike"].shift(-1) - df_check["Strike"]) /
+                                                        (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)))
+                        id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
+                        id_to_remove = []
+                        for row_id in id_with_arbitrage:
+                            row_id_pos = list(df_check.index).index(row_id)
+                            df_select = df_check.loc[
+                                [row_id, min(df_check.index[row_id_pos + 1], df_check.index[-1]), min(df_check.index[row_id_pos + 2], df_check.index[-1])]]
+                            id_to_remove.append(df_select[['Volm']].idxmin()[0])
+                    else:
+                        df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
+                                                (1 + (df_check["Strike"].shift(1) - df_check["Strike"]) / (
+                                                        df_check["Strike"].shift(2) - df_check["Strike"].shift(1))) + \
+                                                df_check["Mid"].shift(2) * ((
+                                                            df_check["Strike"].shift(1) - df_check["Strike"]) / (
+                                                                                    df_check["Strike"].shift(2) -
+                                                                                    df_check["Strike"].shift(1)))
+                        id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
+                        id_to_remove = []
+                        for row_id in id_with_arbitrage:
+                            row_id_pos = list(df_check.index).index(row_id)
+                            df_select = df_check.loc[[row_id, max(df_check.index[row_id_pos - 1], df_check.index[0]), max(df_check.index[row_id_pos - 2], df_check.index[0])]]
+                            id_to_remove.append(df_select[['Volm']].idxmin()[0])
+                    index_list = list(set(index_list + id_to_remove))
         # No Calendar Spread Arbitrage
         for type in df["Type"].unique():
             for strike in df["Strike"].unique():
                 df_check = df[(df["Underlying"] == udl) & (df["Strike"] == strike) & (df["Type"] == type)].copy()
                 df_check = df_check.sort_values(by="Maturity", ascending=True)
-                if len(df["Maturity"].unique()) > 1:
-                    df_check["Calendar Spread"] = df["Mid"].diff()
+                if len(df["Maturity"].unique()) >= 2:
+                    df_check["Calendar Spread"] = df_check["Mid"].diff()
                     id_with_arbitrage = list(df_check[df_check["Calendar Spread"] <= 0].index)
                     id_to_remove = []
                     for row_id in id_with_arbitrage:
-                        df_select = df_check.iloc[[row_id, max(row_id - 1, df_check.index[0])]]
+                        row_id_pos = list(df_check.index).index(row_id)
+                        df_select = df_check.loc[[row_id, max(df_check.index[row_id_pos - 1], df_check.index[0])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                     index_list = list(set(index_list + id_to_remove))
         # Remove Options
@@ -103,7 +108,7 @@ for udl in df["Underlying"].unique():
             options_removed = options_removed + nb_arbitrage
     print(f"  - Butterfly Arbitrage : OK")
     print(f"  - Calendar Spread Arbitrage : OK")
-    print(f"  - Nb of options removed : {options_removed}")
+    print(f"  - Nb of options removed : {options_removed} ({len(df.index)} options remaining)")
 
 # Retrieve Forward & ZC (per maturity)
 for maturity in df["Maturity"].unique():
@@ -132,8 +137,8 @@ df = df[df["Implied Vol"] != -1].copy()
 # Plot Vol Smiles
 for udl in df["Underlying"].unique():
     for maturity in df["Maturity"].unique():
-        df_calls = df[df["Type"] == "Call"].copy()
-        df_puts = df[df["Type"] == "Put"].copy()
+        df_calls = df[(df["Maturity"] == maturity) & (df["Type"] == "Call")].copy()
+        df_puts = df[(df["Maturity"] == maturity) & (df["Type"] == "Put")].copy()
         plt.plot(df_calls["Strike Perc"], df_calls["Implied Vol"], 'o', color='orange', label="Calls")
         plt.plot(df_puts["Strike Perc"], df_puts["Implied Vol"], 'o', color='blue', label="Puts")
         plt.title(f'{udl} - {pd.to_datetime(str(maturity)).strftime("%d.%m.%Y")} - Vol Smile')
