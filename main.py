@@ -1,8 +1,9 @@
 import os
-
+import numpy as np
 import pandas as pd
 import datetime as dt
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
 
 import black_scholes
 
@@ -42,7 +43,7 @@ df["Strike Perc"] = df["Strike"] / df["Spot"]
 df["Mid"] = (df["Bid"] + df["Ask"]) / 2
 
 # Dropping Useless Columns
-df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Strike", "Strike Perc", "Mid", "Volm"]]
+df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Strike", "Strike Perc", "Mid", "Volm", "IVM"]]
 
 # Data Coherence Verification
 for udl in df["Underlying"].unique():
@@ -108,29 +109,56 @@ for udl in df["Underlying"].unique():
             options_removed = options_removed + nb_arbitrage
     print(f"  - Butterfly Arbitrage : OK")
     print(f"  - Calendar Spread Arbitrage : OK")
-    print(f"  - Nb of options removed : {options_removed} ({len(df.index)} options remaining)")
+    print(f"  - Nb of options removed : {options_removed}")
+
+nb_options = len(df.index)
 
 # Retrieve Forward & ZC (per maturity)
+df = df.sort_values(by="Maturity", ascending=True)
+print("\nComputing Forward & ZC per maturity :")
 for maturity in df["Maturity"].unique():
-    df_check = df[df["Maturity"] == maturity].copy()
-    # COMPUTE HERE REGRESSION
-    # ...
-    forward = 1
-    zc = 1
-    df.loc[df["Maturity"] == maturity, ['Forward', 'ZC']] = forward, zc
+    df_reg = df[df["Maturity"] == maturity].copy()
+    # Remove Strikes With less than 1 Calls & Puts
+    for strike in df_reg["Strike"].unique():
+        if len(df_reg[(df_reg["Strike"] == strike)].index) == 1:
+            df_reg = df_reg[df_reg["Strike"] != strike].copy()
+    if len(df_reg.index) < 4:
+        df = df[df["Maturity"] != maturity].copy()
+    # Else --> Compute ZC & Forward
+    else:
+        Y_list = []
+        K_list = df_reg["Strike"].unique()
+        for strike in K_list:
+            Y_list.append(float(df_reg[(df_reg["Strike"] == strike) & (df_reg["Type"] == "Call")]["Mid"]) - float(df_reg[(df_reg["Strike"] == strike) & (df_reg["Type"] == "Put")]["Mid"]))
+        x = np.array(np.array(K_list)/spot).reshape((-1, 1))
+        y = np.array(np.array(Y_list)/spot)
+        model = LinearRegression().fit(x, y)
+        beta = model.coef_[0]
+        alpha = model.intercept_
+        zc = -beta
+        forward = alpha/zc
+        df.loc[df["Maturity"] == maturity, ['Forward', 'ZC']] = forward, zc
+print(f" - Nb of options removed : {nb_options - len(df.index)}")
+nb_options = len(df.index)
 
 # Remove ITM Options
+print("\nRemoving ITM Options :")
 df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put") & (df["Strike"] <= spot))].copy()
+print(f" - Nb of options removed : {nb_options - len(df.index)}")
+nb_options = len(df.index)
 
 # Compute Implied Volatilities
-print("\nComputing BS Implied Volatilities")
+print(f"\nComputing BS Implied Volatilities ({nb_options} options used)")
 df["Implied Vol"] = df.apply(
     lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"],
                                           t=(x["Maturity"] - x["Spot Date"]).days / 365,
                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
 
 # Drop Error Points
+print("\nRemoving Error Points")
 df = df[df["Implied Vol"] != -1].copy()
+print(f" - Nb of options removed : {nb_options - len(df.index)}")
+print(f" - Nb of points used in vol surface : {len(df.index)}")
 
 # Calibration
 
@@ -141,7 +169,9 @@ for udl in df["Underlying"].unique():
         df_puts = df[(df["Maturity"] == maturity) & (df["Type"] == "Put")].copy()
         plt.plot(df_calls["Strike Perc"], df_calls["Implied Vol"], 'o', color='orange', label="Calls")
         plt.plot(df_puts["Strike Perc"], df_puts["Implied Vol"], 'o', color='blue', label="Puts")
-        plt.title(f'{udl} - {pd.to_datetime(str(maturity)).strftime("%d.%m.%Y")} - Vol Smile')
+        plt.plot(df_calls["Strike Perc"], df_calls["IVM"]/100, '.', color='black', label="BBG IV Calls")
+        plt.plot(df_puts["Strike Perc"], df_puts["IVM"]/100, '.', color='grey', label="BBG IV Puts")
+        plt.title(f'{udl} - {pd.to_datetime(str(maturity)).strftime("%d.%m.%Y")} - ATM Vol')
         plt.legend()
         plt.grid()
         plt.show()
