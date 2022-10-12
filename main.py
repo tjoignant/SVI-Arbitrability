@@ -51,6 +51,7 @@ for udl in df["Underlying"].unique():
     while nb_arbitrage > 0:
         nb_arbitrage = 0
         index_list = []
+        print(1)
         # No Butterfly Arbitrage
         for maturity in df["Maturity"].unique():
             for type in df["Type"].unique():
@@ -66,8 +67,8 @@ for udl in df["Underlying"].unique():
                     id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
                     id_to_remove = []
                     for row_id in id_with_arbitrage:
-                        df_select = df_check.iloc[
-                            [row_id, max(row_id + 1, df_check.index[-1]), max(row_id + 2, df_check.index[-1])]]
+                        df_select = df_check.loc[
+                            [row_id, min(row_id + 1, df_check.index[-1]), min(row_id + 2, df_check.index[-1])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 else:
                     df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
@@ -80,10 +81,11 @@ for udl in df["Underlying"].unique():
                     id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
                     id_to_remove = []
                     for row_id in id_with_arbitrage:
-                        df_select = df_check.iloc[[row_id, max(row_id - 1, df_check.index[0]), max(row_id - 2, df_check.index[0])]]
+                        df_select = df_check.loc[[row_id, max(row_id - 1, df_check.index[0]), max(row_id - 2, df_check.index[0])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 index_list = list(set(index_list + id_to_remove))
         # No Calendar Spread Arbitrage
+        print(2)
         for type in df["Type"].unique():
             for strike in df["Strike"].unique():
                 df_check = df[(df["Underlying"] == udl) & (df["Strike"] == strike) & (df["Type"] == type)].copy()
@@ -99,6 +101,7 @@ for udl in df["Underlying"].unique():
         # Remove Options
         nb_arbitrage = len(index_list)
         if nb_arbitrage > 0:
+            print(3)
             df = df.drop(index_list).reset_index(drop=True)
             options_removed = options_removed + nb_arbitrage
     print(f"  - Butterfly Arbitrage : OK")
@@ -109,7 +112,6 @@ for udl in df["Underlying"].unique():
 for maturity in df["Maturity"].unique():
     df_check = df[df["Maturity"] == maturity].copy()
     # COMPUTE HERE REGRESSION
-    # ...
     forward = 1
     zc = 1
     df.loc[df["Maturity"] == maturity, ['Forward', 'ZC']] = forward, zc
