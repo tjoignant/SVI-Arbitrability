@@ -7,7 +7,6 @@ from sklearn.linear_model import LinearRegression
 
 import black_scholes
 
-#Test
 # Inputs
 spot = 3375.46
 spot_date = dt.datetime(day=7, month=10, year=2022)
@@ -22,7 +21,9 @@ pd.set_option('display.expand_frame_repr', False)
 df_list = []
 folder = 'datas'
 for file in sorted((f for f in os.listdir(folder) if not f.startswith(".")), key=str.lower):
-    df_list.append(pd.read_excel(f"{folder}/{file}", header=0).dropna())
+    # Do not open hidden files
+    if file[0] != "~":
+        df_list.append(pd.read_excel(f"{folder}/{file}", header=0, engine='openpyxl').dropna())
 df = pd.concat(df_list)
 
 # Set Spot Value & Date
@@ -123,6 +124,7 @@ for maturity in df["Maturity"].unique():
     for strike in df_reg["Strike"].unique():
         if len(df_reg[(df_reg["Strike"] == strike)].index) == 1:
             df_reg = df_reg[df_reg["Strike"] != strike].copy()
+    # Remove Strikes With less than 2 Calls & Puts (no regression possible)
     if len(df_reg.index) < 4:
         df = df[df["Maturity"] != maturity].copy()
     # Else --> Compute ZC & Forward
