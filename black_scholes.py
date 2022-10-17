@@ -5,8 +5,6 @@ from scipy.stats import norm
 MAX_ITERS = 10000
 MAX_ERROR = pow(10, -6)
 EPS = 0.01
-MAX_GAUSSIAN_VALUE = 13.190905958273
-MATH_SQR2PI = 2.50662827
 
 
 def BS_d1(f, k, t, v):
@@ -101,7 +99,7 @@ def BS_Volga(f, k, t, v, df, OptType):
 
 def BS_ImpliedVol(f, k, t, MktPrice, df, OptType):
     nb_iter = 0
-    v = 0.26
+    v = 0.30
     func = MktPrice - BS_Price(f, k, t, v, df, OptType)
     while abs(func) > MAX_ERROR and nb_iter < MAX_ITERS:
         veg = BS_Vega(f, k, t, v, df, OptType)
