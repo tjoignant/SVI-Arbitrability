@@ -167,6 +167,7 @@ print(f"\n4) Computing BS Implied Volatilities :")
 df["Implied Vol"] = df.apply(
     lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+# Drop Error Points
 df = df[df["Implied Vol"] != -1].copy()
 print(f" - Nb of options removed : {nb_options[-1] - len(df.index)}")
 
