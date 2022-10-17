@@ -41,11 +41,12 @@ df["Underlying"] = df["Underlying"].apply(lambda x: x[1:-1] if x[0] == "W" else 
 df["Maturity"] = df["Ticker"].apply(lambda x: dt.datetime.strptime(x.split(" ")[1], "%m/%d/%y"))
 df["Strike Perc"] = df["Strike"] / df["Spot"]
 
-# Compute Mid Price
+# Compute Mid Price & Maturity (in years)
 df["Mid"] = (df["Bid"] + df["Ask"]) / 2
+df["Maturity (in Y)"] = df.apply(lambda x: (x["Maturity"] - x["Spot Date"]).days / 365, axis=1)
 
 # Dropping Useless Columns
-df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Strike", "Strike Perc", "Mid", "Volm", "IVM"]]
+df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Maturity (in Y)", "Strike", "Strike Perc", "Mid", "Volm", "IVM"]]
 
 # Data Coherence Verification
 for udl in df["Underlying"].unique():
@@ -153,8 +154,7 @@ nb_options = len(df.index)
 # Compute Implied Volatilities
 print(f"\nComputing BS Implied Volatilities ({nb_options} options used)")
 df["Implied Vol"] = df.apply(
-    lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"],
-                                          t=(x["Maturity"] - x["Spot Date"]).days / 365,
+    lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
 
 # Drop Error Points
@@ -162,6 +162,9 @@ print("\nRemoving Error Points")
 df = df[df["Implied Vol"] != -1].copy()
 print(f" - Nb of options removed : {nb_options - len(df.index)}")
 print(f" - Nb of points used in vol surface : {len(df.index)}")
+
+# Compute Implied Total Variance
+df["Implied Total Var"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
 # Calibration
 

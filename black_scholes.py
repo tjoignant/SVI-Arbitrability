@@ -24,80 +24,80 @@ def SNorm(z):
 def BS_Price(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
     d2 = d1 - v * np.sqrt(t)
-    swticher = {
+    switcher = {
         "C": df * (f * SNorm(d1) - k * SNorm(d2)),
         "P": df * (-f * SNorm(-d1) + k * SNorm(-d2)),
         "C+P": df * (f * SNorm(d1) - SNorm(-d1)) - k * (SNorm(d2) - SNorm(-d2)),
         "C-P": df * (f * SNorm(d1) + SNorm(-d1)) - k * (SNorm(d2) + SNorm(-d2)),
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_Delta(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
-    swticher = {
+    switcher = {
         "C": df * SNorm(d1),
         "P": -df * SNorm(-d1),
         "C+P": df * (SNorm(d1) - SNorm(-d1)),
         "C-P": df * (SNorm(d1) + SNorm(-d1)),
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_Theta(f, k, t, v, df, r, OptType):
     d1 = BS_d1(f, k, t, v)
     d2 = d1 - v * np.sqrt(t)
-    swticher = {
+    switcher = {
         "C": -df * ((f * SNorm(d1) * v) / (2 * np.sqrt(t)) - (r * f * SNorm(d1)) + (r * k * SNorm(d2))),
         "P": -df * ((f * SNorm(d1) * v) / (2 * np.sqrt(t)) + (r * f * SNorm(-d1)) - (r * k * SNorm(-d2))),
         "C+P": BS_Theta(f, k, t, v, df, r, "C") + BS_Theta(f, k, t, v, df, r, "P"),
         "C-P": BS_Theta(f, k, t, v, df, r, "C") - BS_Theta(f, k, t, v, df, r, "P"),
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_Gamma(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
     fd1 = NormalDistrib(d1)
-    swticher = {
+    switcher = {
         "C": df * fd1 / (f * v * np.sqrt(t)),
         "P": df * fd1 / (f * v * np.sqrt(t)),
         "C+P": 2 * df * fd1 / (f * v * np.sqrt(t)),
         "C-P": 0,
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_Vega(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
     fd1 = NormalDistrib(d1)
-    swticher = {
+    switcher = {
         "C": df * f * fd1 * np.sqrt(t),
         "P": df * f * fd1 * np.sqrt(t),
         "C+P": 2 * df * f * fd1 * np.sqrt(t),
         "C-P": 0,
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_Vanna(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
     d2 = d1 - v * np.sqrt(t)
     fd1 = NormalDistrib(d1)
-    swticher = {
+    switcher = {
         "C": -df * fd1 * d2 / v,
         "P": -df * fd1 * d2 / v,
         "C+P": -2 * df * fd1 * d2 / v,
         "C-P": 0,
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_Volga(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
     d2 = d1 - v * np.sqrt(t)
     fd1 = NormalDistrib(d1)
-    swticher = {
+    switcher = {
         "C": df * f * np.sqrt(t) * fd1 * np.sqrt(t) * d1 * d2,
         "P": df * f * np.sqrt(t) * fd1 * np.sqrt(t) * d1 * d2,
         "C+P": 2 * df * f * np.sqrt(t) * fd1 * np.sqrt(t) * d1 * d2,
         "C-P": 0,
     }
-    return swticher.get(OptType.upper(), 0)
+    return switcher.get(OptType.upper(), 0)
 
 def BS_ImpliedVol(f, k, t, MktPrice, df, OptType):
     nb_iter = 0
