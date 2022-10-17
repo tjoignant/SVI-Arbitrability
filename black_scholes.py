@@ -1,8 +1,9 @@
 import numpy as np
+from scipy.stats import norm
 
 
-MAX_ITERS = 1000
-MAX_ERROR = pow(10, -5)
+MAX_ITERS = 10000
+MAX_ERROR = pow(10, -6)
 EPS = 0.01
 MAX_GAUSSIAN_VALUE = 13.190905958273
 MATH_SQR2PI = 2.50662827
@@ -15,25 +16,10 @@ def BS_d2(f, k, t, v):
     return BS_d1(f, k, t, v) - v * np.sqrt(t)
 
 def NormalDistrib(z, mean=0, stdev=1):
-    if abs(z) > MAX_GAUSSIAN_VALUE:
-        return 0
-    else:
-        return np.exp(-0.5 * ((z - mean) / stdev) ** 2) / MATH_SQR2PI / stdev
+    return norm.pdf(z, loc=mean, scale=stdev)
 
 def SNorm(z):
-    c1 = 2.506628
-    c2 = 0.31938153
-    c3 = -0.3565638
-    c4 = 1.781477937
-    c5 = -1.821255978
-    c6 = 1.330274429
-    if abs(z) > MAX_GAUSSIAN_VALUE:
-        return 1 if z > 0 else 0
-    else:
-        w = -1 if z < 0 else 1
-        y = 1 / (1 + 0.2316419 * w * z)
-        x = y * (c3 + y * (c4 + y * c5 + y * c6))
-        return 0.5 + w * (0.5 - (np.exp(-z * z / 2) / c1) * (y * (c2 + x)))
+    return norm.cdf(z)
 
 def BS_Price(f, k, t, v, df, OptType):
     d1 = BS_d1(f, k, t, v)
@@ -115,7 +101,7 @@ def BS_Volga(f, k, t, v, df, OptType):
 
 def BS_ImpliedVol(f, k, t, MktPrice, df, OptType):
     nb_iter = 0
-    v = 0.3
+    v = 0.26
     func = MktPrice - BS_Price(f, k, t, v, df, OptType)
     while abs(func) > MAX_ERROR and nb_iter < MAX_ITERS:
         veg = BS_Vega(f, k, t, v, df, OptType)
