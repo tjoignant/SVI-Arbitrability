@@ -201,9 +201,9 @@ df["Implied Vol"] = df.apply(
 #     comparison[i].append(df["Ecart"].iloc[i])
 #     print(comparison[i])
 # df.drop(["Implied Vol Brent", "Ecart"], axis=1)
-#
-# # Drop Error Points
-# df = df[df["Implied Vol"] != -1].copy()
+
+# Drop Error Points
+df = df[df["Implied Vol"] != -1].copy()
 
 # Create Implied Vol Surface
 df_list = []

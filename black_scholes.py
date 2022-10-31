@@ -230,7 +230,7 @@ def BS_ImpliedVol_Brent(f, k, t, MktPrice, df, OptType):
         :return: Implied Volatility using Brent method
         """
 
-    MAX_ITERS = 200
+    MAX_ITERS = 100
     MAX_ERROR = pow(10, -4)
     nb_iter = 0
 
