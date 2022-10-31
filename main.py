@@ -1,13 +1,20 @@
 import os
+import time
 import numpy as np
 import pandas as pd
 import datetime as dt
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+from matplotlib.dates import DateFormatter
 from sklearn.linear_model import LinearRegression
 
+import calibration
 import black_scholes
 
-# Inputs
+
+# Initialisation
+start = time.perf_counter()
 spot = 3375.46
 spot_date = dt.datetime(day=7, month=10, year=2022)
 min_volume = 1
@@ -46,16 +53,21 @@ df["Strike Perc"] = df["Strike"] / df["Spot"]
 # Compute Mid Price & Maturity (in years)
 df["Mid"] = (df["Bid"] + df["Ask"]) / 2
 df["Maturity (in Y)"] = df.apply(lambda x: (x["Maturity"] - x["Spot Date"]).days / 365, axis=1)
+df["Pretty Maturity"] = df["Maturity"].apply(lambda x: x.strftime("%b-%y"))
 
 # Dropping Useless Columns
-df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Maturity (in Y)", "Strike", "Strike Perc", "Mid", "Volm", "IVM"]]
+df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Pretty Maturity", "Maturity (in Y)", "Strike", "Strike Perc", "Mid", "Volm", "IVM"]]
+
+# Timer
+end = time.perf_counter()
+print(f"\n1/ Datas Loaded & Parsed ({round(end-start, 1)}s)")
+start = end
 
 # Add Nb Options
 nb_options.append(len(df.index))
 nb_options_text.append("Initial")
 
 # Data Coherence Verification
-print(f"\n1) Coherence Check :")
 nb_arbitrage = 1
 while nb_arbitrage > 0:
     nb_arbitrage = 0
@@ -113,9 +125,11 @@ while nb_arbitrage > 0:
     nb_arbitrage = len(index_list)
     if nb_arbitrage > 0:
         df = df.drop(index_list).reset_index(drop=True)
-print(f"  - Butterfly Arbitrage : OK")
-print(f"  - Calendar Spread Arbitrage : OK")
-print(f"  - Nb of options removed : {nb_options[-1] - len(df.index)}")
+
+# Timer
+end = time.perf_counter()
+print(f"2/ Arbitrage Coherence Checked ({round(end-start, 1)}s)")
+start = end
 
 # Add Nb Options
 nb_options.append(len(df.index))
@@ -123,7 +137,6 @@ nb_options_text.append("Arbitrages")
 
 # Retrieve Forward & ZC (per maturity)
 df = df.sort_values(by="Maturity", ascending=True)
-print("\n2) Computing Forward & ZC (per maturity) :")
 for maturity in df["Maturity"].unique():
     df_reg = df[df["Maturity"] == maturity].copy()
     # Remove Strikes With less than 1 Calls & Puts
@@ -147,53 +160,113 @@ for maturity in df["Maturity"].unique():
         zc = -beta
         forward = alpha/zc
         df.loc[df["Maturity"] == maturity, ['Forward', 'ZC']] = forward, zc
-print(f" - Nb of options removed : {nb_options[-1] - len(df.index)}")
+
+# Remove ITM Options
+df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put") & (df["Strike"] <= spot))].copy()
+
+# Timer
+end = time.perf_counter()
+print(f"3/ Forward & ZC Computed + ITM Options Removed ({round(end-start, 1)}s)")
+start = end
 
 # Add Nb Options
 nb_options.append(len(df.index))
 nb_options_text.append("Regression")
 
-# Remove ITM Options
-print("\n3) Removing ITM Options :")
-df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put") & (df["Strike"] <= spot))].copy()
-print(f" - Nb of options removed : {nb_options[-1] - len(df.index)}")
-
-# Add Nb Options
-nb_options.append(len(df.index))
-nb_options_text.append("ITM Options")
-
 # Compute Implied Volatilities
-print(f"\n4) Computing BS Implied Volatilities :")
 df["Implied Vol"] = df.apply(
     lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
 # Drop Error Points
 df = df[df["Implied Vol"] != -1].copy()
-print(f" - Nb of options removed : {nb_options[-1] - len(df.index)}")
 
-print(f"\nNb of points used in vol surface : {len(df.index)}")
+# Create Implied Vol Surface
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["Implied Vol"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_surface = pd.concat(df_list, axis=1)
+df_surface.sort_index(inplace=True)
+
+# Timer
+end = time.perf_counter()
+print(f"4/ Market Implied Volatilities Computed ({round(end-start, 1)}s)")
+start = end
 
 # Add Nb Options
 nb_options.append(len(df.index))
 nb_options_text.append("Newton-Raphson")
 
-# Compute Implied Total Variance
-df["Implied Total Var"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
+# Compute Log Forward Moneyness & Implied Total Variance
+df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"]/x["Forward"]), axis=1)
+df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
-# Plot Calibration Infos
+# Compute SVI Params & ATM Implied Total Variance (using SVI calibration with Nelder Mead)
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity)].copy()
+    SVI_params = calibration.SVI_calibration(
+        k_list=list(df_mat["Log Forward Moneyness"]),
+        mktTotVar_list=list(df_mat["Implied TV"]),
+        weights_list=list(df_mat["Implied Vol"]),
+    )
+    df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
+    df.loc[df["Maturity"] == maturity, ['ATMF Implied TV']] = \
+        calibration.SVI(k=0, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
+                        m_=SVI_params["m_"], sigma_=SVI_params["sigma_"])
+
+# Timer
+end = time.perf_counter()
+print(f"5/ SVI Curves Calibrated ({round(end-start, 1)}s)")
+start = end
+
+# Compute SSVI Params
+SSVI_params = calibration.SSVI_calibration(
+    k_list=list(df["Log Forward Moneyness"]),
+    atmfTotVar_list=list(df["ATMF Implied TV"]),
+    mktTotVar_list=list(df["Implied TV"]),
+    weights_list=list(df["Implied Vol"]),
+)
+
+# Timer
+end = time.perf_counter()
+print(f"6/ SSVI Surface Calibrated ({round(end-start, 1)}s)")
+start = end
+
+# Display Calibration Results
+print("\nSSVI calibrated parameters:")
+print(f"  - rho = {SSVI_params['rho_']}")
+print(f"  - eta = {SSVI_params['eta_']}")
+print(f"  - lambda = {SSVI_params['lambda_']}")
+
+# Set Graphs Infos
+fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
+fig.suptitle(f"Calibration Results (as of {spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=14)
+
+# Plot Number of Options Used
+axs[0, 0].plot(nb_options_text, nb_options, "-")
+axs[0, 0].set_title("Options Per Calibration Steps")
+axs[0, 0].grid()
+
+# Plot Implied Forward & ZC
+maturity_list = []
 forward_list = []
 zc_list = []
-# Plot Implied Forward & ZC
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    forward_list.append(df_bis["Forward"].unique())
-    zc_list.append(df_bis["ZC"].unique())
-plt.plot(df["Maturity"].unique(), forward_list, label="Forward")
-plt.plot(df["Maturity"].unique(), zc_list, label="ZC")
-plt.title(f"Implied Forward & ZC")
-plt.legend()
-plt.grid()
-plt.show()
+    forward_list.append(list(df_bis["Forward"].unique())[0])
+    zc_list.append(list(df_bis["ZC"].unique())[0])
+    maturity_list.append(maturity)
+axs[1, 0].plot(maturity_list, forward_list, label="Forward")
+axs[1, 0].plot(maturity_list, zc_list, label="ZC")
+axs[1, 0].set_title(f"Implied Forward & ZC")
+axs[1, 0].legend(loc="upper right")
+axs[1, 0].grid()
+axs[1, 0].xaxis.set_major_formatter(DateFormatter("%b-%y"))
+axs[1, 0].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+
 # Plot Implied Total Variance
 percentage = 70
 for strike in df["Strike"].unique():
@@ -202,16 +275,50 @@ for strike in df["Strike"].unique():
         total_implied_var = []
         for maturity in df_strike["Maturity"].unique():
             df_bis = df[(df["Strike"] == strike) & (df["Maturity"] == maturity)].copy()
-            total_implied_var.append(df_bis["Implied Total Var"].unique())
-        plt.plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
-plt.grid()
-plt.legend()
-plt.title("Implied Total Variance (by most liquid strikes)")
-plt.show()
-# Plot Number of Options Used
-plt.plot(nb_options_text, nb_options, "-")
-plt.title("Number of options used")
-plt.grid()
-plt.show()
+            total_implied_var.append(df_bis["Implied TV"].unique())
+        axs[0, 1].plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
+axs[0, 1].grid()
+axs[0, 1].legend(loc="upper right")
+axs[0, 1].set_title("Market Implied Total Variance")
+axs[0, 1].xaxis.set_major_formatter(DateFormatter("%b-%y"))
+axs[0, 1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
-# Calibration (Nelder-Mead)
+# Plot Market Implied Volatilities
+for maturity in df["Pretty Maturity"].unique():
+    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+    df_bis = df_bis.sort_values(by="Strike", ascending=False)
+    axs[1, 1].plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
+axs[1, 1].scatter(df["Strike"], df["IVM"]/100, marker=".", color="black", label="BBG IV")
+axs[1, 1].grid()
+axs[1, 1].set_title("Market Implied Volatility")
+axs[1, 1].legend(loc="upper right")
+
+# Plot SVI Calibration
+k_list = np.linspace(-1, 1, 400)
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    SVI_params = list(df_bis["SVI Params"])[0]
+    svi_list = [calibration.SVI(k=k, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
+                                m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]) for k in k_list]
+    axs[0, 2].plot(k_list, svi_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs[0, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+axs[0, 2].grid()
+axs[0, 2].legend(loc="upper right")
+axs[0, 2].set_title("SVI Calibration")
+
+# Plot SSVI Calibration
+k_list = np.linspace(-1, 1, 400)
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    theta = list(df_bis["ATMF Implied TV"])[0]
+    svi_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
+                                 lambda_=SSVI_params["lambda_"]) for k in k_list]
+    axs[1, 2].plot(k_list, svi_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs[1, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+axs[1, 2].grid()
+axs[1, 2].legend(loc="upper right")
+axs[1, 2].set_title("SSVI Calibration")
+
+# Show Graphs
+plt.tight_layout()
+plt.show()
