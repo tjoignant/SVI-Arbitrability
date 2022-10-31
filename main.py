@@ -181,8 +181,23 @@ nb_options_text.append("Regression")
 df["Implied Vol"] = df.apply(
     lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
-# Drop Error Points
-df = df[df["Implied Vol"] != -1].copy()
+
+# # Compute Implied Volatilities with Brent method
+# df["Implied Vol Brent"] = df.apply(
+#     lambda x: black_scholes.BS_ImpliedVol_Brent(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+#                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+# df["Ecart"] = abs(df["Implied Vol Brent"] - df["Implied Vol"])
+# comparison = []
+# for i in range(len(df["Implied Vol"])):
+#     comparison.append([])
+#     comparison[i].append(df["Implied Vol"].iloc[i])
+#     comparison[i].append(df["Implied Vol Brent"].iloc[i])
+#     comparison[i].append(df["Ecart"].iloc[i])
+#     print(comparison[i])
+# df.drop(["Implied Vol Brent", "Ecart"], axis=1)
+#
+# # Drop Error Points
+# df = df[df["Implied Vol"] != -1].copy()
 
 # Create Implied Vol Surface
 df_list = []

@@ -219,6 +219,72 @@ def BS_ImpliedVol(f, k, t, MktPrice, df, OptType):
     return v
 
 
+def BS_ImpliedVol_Brent(f, k, t, MktPrice, df, OptType):
+    """
+        :param f: Forward (in %)
+        :param k: Strike (in %)
+        :param t: Maturity (in Years)
+        :param MktPrice: Option's Market Price (in %)
+        :param df: Discount Factor (in %)
+        :param OptType: Either "C", "P", "C+P" or "C-P"
+        :return: Implied Volatility using Brent method
+        """
+
+    MAX_ITERS = 200
+    MAX_ERROR = pow(10, -4)
+    nb_iter = 0
+
+    #Initialisation
+    v_a = -1
+    v_b = 1
+    func_a = MktPrice - BS_Price(f, k, t, v_a, df, OptType)
+    func_b = MktPrice - BS_Price(f, k, t, v_b, df, OptType)
+
+    if func_a * func_b > 0:
+        print("Mauvais encadrement")
+        return -1
+    else:
+        if abs(func_a) < abs(func_b):
+            v_a, v_b = v_b, v_a
+        v_c = v_a
+        func_c = func_a
+        mflag = True
+        v_d = v_c  # Cette initialisation sert uniquement à ne pas soulever d'erreur. En pratique, lors de la première boucle, mflag = True donc on ne pourra pas tester la valeur de v_d
+        while abs(func_b) > MAX_ERROR and nb_iter < MAX_ITERS:
+            if func_a != func_c and func_b != func_c:
+                # Interpolation quadratique inverse
+                a = v_a * (func_b * func_c) / ((func_a - func_b) * (func_a - func_c))
+                b = v_b * (func_a * func_c) / ((func_b - func_a) * (func_b - func_c))
+                c = v_c * (func_a * func_b) / ((func_c - func_a) * (func_c - func_b))
+                new = a + b + c
+            else:
+                # Secante
+                sec = (BS_Price(f, k, t, v_b, df, OptType) - BS_Price(f, k, t, v_a, df, OptType)) / (v_b - v_a)
+                new = v_b + func_b / sec
+
+            if (new < (3 * v_a + v_b) / 4 or new > v_b) or (
+                    mflag == True and abs(new - v_b) >= (abs(v_b - v_c) / 2)) or (
+                    mflag == False and abs(new - v_b) >= abs(v_c - v_d) / 2):
+                new = (v_a + v_b) / 2
+                mflag = True
+            else:
+                mflag = False
+
+            func_new = MktPrice - BS_Price(f, k, t, new, df, OptType)
+            v_d, v_c = v_c, v_b
+
+            if func_a * func_new < 0:
+                v_b = new
+            else:
+                v_a = new
+
+            if abs(func_a) < abs(func_b):
+                v_a, v_b = v_b, v_a
+
+            nb_iter = nb_iter + 1
+
+        return v_b
+
 def BS_ImpliedStrike(f, MktPrice, t, df, v, OptType):
     """
     :param f: Forward (in %)
