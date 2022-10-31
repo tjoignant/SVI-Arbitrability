@@ -12,7 +12,6 @@ from sklearn.linear_model import LinearRegression
 import calibration
 import black_scholes
 
-
 # Initialisation
 start = time.perf_counter()
 spot = 3375.46
@@ -56,11 +55,12 @@ df["Maturity (in Y)"] = df.apply(lambda x: (x["Maturity"] - x["Spot Date"]).days
 df["Pretty Maturity"] = df["Maturity"].apply(lambda x: x.strftime("%b-%y"))
 
 # Dropping Useless Columns
-df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Pretty Maturity", "Maturity (in Y)", "Strike", "Strike Perc", "Mid", "Volm", "IVM"]]
+df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Pretty Maturity", "Maturity (in Y)", "Strike",
+         "Strike Perc", "Mid", "Volm", "IVM"]]
 
 # Timer
 end = time.perf_counter()
-print(f"\n1/ Datas Loaded & Parsed ({round(end-start, 1)}s)")
+print(f"\n1/ Datas Loaded & Parsed ({round(end - start, 1)}s)")
 start = end
 
 # Add Nb Options
@@ -90,21 +90,24 @@ while nb_arbitrage > 0:
                     for row_id in id_with_arbitrage:
                         row_id_pos = list(df_check.index).index(row_id)
                         df_select = df_check.loc[
-                            [row_id, min(df_check.index[row_id_pos + 1], df_check.index[-1]), min(df_check.index[row_id_pos + 2], df_check.index[-1])]]
+                            [row_id, min(df_check.index[row_id_pos + 1], df_check.index[-1]),
+                             min(df_check.index[row_id_pos + 2], df_check.index[-1])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 else:
                     df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
                                             (1 + (df_check["Strike"].shift(1) - df_check["Strike"]) / (
                                                     df_check["Strike"].shift(2) - df_check["Strike"].shift(1))) + \
                                             df_check["Mid"].shift(2) * ((
-                                                        df_check["Strike"].shift(1) - df_check["Strike"]) / (
+                                                                                df_check["Strike"].shift(1) - df_check[
+                                                                            "Strike"]) / (
                                                                                 df_check["Strike"].shift(2) -
                                                                                 df_check["Strike"].shift(1)))
                     id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
                     id_to_remove = []
                     for row_id in id_with_arbitrage:
                         row_id_pos = list(df_check.index).index(row_id)
-                        df_select = df_check.loc[[row_id, max(df_check.index[row_id_pos - 1], df_check.index[0]), max(df_check.index[row_id_pos - 2], df_check.index[0])]]
+                        df_select = df_check.loc[[row_id, max(df_check.index[row_id_pos - 1], df_check.index[0]),
+                                                  max(df_check.index[row_id_pos - 2], df_check.index[0])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 index_list = list(set(index_list + id_to_remove))
     # No Calendar Spread Arbitrage
@@ -128,7 +131,7 @@ while nb_arbitrage > 0:
 
 # Timer
 end = time.perf_counter()
-print(f"2/ Arbitrage Coherence Checked ({round(end-start, 1)}s)")
+print(f"2/ Arbitrage Coherence Checked ({round(end - start, 1)}s)")
 start = end
 
 # Add Nb Options
@@ -151,14 +154,15 @@ for maturity in df["Maturity"].unique():
         Y_list = []
         K_list = df_reg["Strike"].unique()
         for strike in K_list:
-            Y_list.append(float(df_reg[(df_reg["Strike"] == strike) & (df_reg["Type"] == "Call")]["Mid"]) - float(df_reg[(df_reg["Strike"] == strike) & (df_reg["Type"] == "Put")]["Mid"]))
-        x = np.array(np.array(K_list)/spot).reshape((-1, 1))
-        y = np.array(np.array(Y_list)/spot)
+            Y_list.append(float(df_reg[(df_reg["Strike"] == strike) & (df_reg["Type"] == "Call")]["Mid"]) - float(
+                df_reg[(df_reg["Strike"] == strike) & (df_reg["Type"] == "Put")]["Mid"]))
+        x = np.array(np.array(K_list) / spot).reshape((-1, 1))
+        y = np.array(np.array(Y_list) / spot)
         model = LinearRegression().fit(x, y)
         beta = model.coef_[0]
         alpha = model.intercept_
         zc = -beta
-        forward = alpha/zc
+        forward = alpha / zc
         df.loc[df["Maturity"] == maturity, ['Forward', 'ZC']] = forward, zc
 
 # Remove ITM Options
@@ -166,7 +170,7 @@ df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put
 
 # Timer
 end = time.perf_counter()
-print(f"3/ Forward & ZC Computed + ITM Options Removed ({round(end-start, 1)}s)")
+print(f"3/ Forward & ZC Computed + ITM Options Removed ({round(end - start, 1)}s)")
 start = end
 
 # Add Nb Options
@@ -193,7 +197,7 @@ df_surface.sort_index(inplace=True)
 
 # Timer
 end = time.perf_counter()
-print(f"4/ Market Implied Volatilities Computed ({round(end-start, 1)}s)")
+print(f"4/ Market Implied Volatilities Computed ({round(end - start, 1)}s)")
 start = end
 
 # Add Nb Options
@@ -201,10 +205,10 @@ nb_options.append(len(df.index))
 nb_options_text.append("Newton-Raphson")
 
 # Compute Log Forward Moneyness & Implied Total Variance
-df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"]/x["Forward"]), axis=1)
+df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
-# Compute SVI Params & ATM Implied Total Variance (using SVI calibration with Nelder Mead)
+# Calibrate SVI Curves & Compute ATM Implied Total Variance
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = calibration.SVI_calibration(
@@ -219,10 +223,10 @@ for maturity in df["Maturity"].unique():
 
 # Timer
 end = time.perf_counter()
-print(f"5/ SVI Curves Calibrated ({round(end-start, 1)}s)")
+print(f"5/ SVI Curves Calibrated ({round(end - start, 1)}s)")
 start = end
 
-# Compute SSVI Params
+# Calibrate SSVI Surface
 SSVI_params = calibration.SSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
     atmfTotVar_list=list(df["ATMF Implied TV"]),
@@ -232,7 +236,7 @@ SSVI_params = calibration.SSVI_calibration(
 
 # Timer
 end = time.perf_counter()
-print(f"6/ SSVI Surface Calibrated ({round(end-start, 1)}s)")
+print(f"6/ SSVI Surface Calibrated ({round(end - start, 1)}s)")
 start = end
 
 # Display Calibration Results
@@ -288,7 +292,7 @@ for maturity in df["Pretty Maturity"].unique():
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
     axs[1, 1].plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
-axs[1, 1].scatter(df["Strike"], df["IVM"]/100, marker=".", color="black", label="BBG IV")
+axs[1, 1].scatter(df["Strike"], df["IVM"] / 100, marker=".", color="black", label="BBG IV")
 axs[1, 1].grid()
 axs[1, 1].set_title("Market Implied Volatility")
 axs[1, 1].legend(loc="upper right")
