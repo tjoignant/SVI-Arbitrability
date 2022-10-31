@@ -105,7 +105,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
     :param weights_list: weights list : [w_1, w_2, w_3, ...]
     :return: calibrated parameters list
     """
-    init_params_list = [0, 1, 0.5]
+    init_params_list = [-0.5, 1, 0.5]
     inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
     result = optimize.minimize(
         SSVI_minimisation_function,

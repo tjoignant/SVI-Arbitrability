@@ -19,6 +19,8 @@ spot_date = dt.datetime(day=7, month=10, year=2022)
 min_volume = 1
 nb_options = []
 nb_options_text = []
+tick_font_size = 8.5
+title_font_size = 11
 
 # Set Pandas Display Settings
 pd.set_option('display.max_rows', 100)
@@ -165,17 +167,21 @@ for maturity in df["Maturity"].unique():
         forward = alpha / zc
         df.loc[df["Maturity"] == maturity, ['Forward', 'ZC']] = forward, zc
 
+# Add Nb Options
+nb_options.append(len(df.index))
+nb_options_text.append("Forward+ZC")
+
 # Remove ITM Options
 df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put") & (df["Strike"] <= spot))].copy()
 
 # Timer
 end = time.perf_counter()
-print(f"3/ Forward & ZC Computed + ITM Options Removed ({round(end - start, 1)}s)")
+print(f"3/ Market Implied Forward & ZC Computed + ITM Options Removed ({round(end - start, 1)}s)")
 start = end
 
 # Add Nb Options
 nb_options.append(len(df.index))
-nb_options_text.append("Regression")
+nb_options_text.append("ITM Opt.")
 
 # Compute Implied Volatilities
 df["Implied Vol"] = df.apply(
@@ -217,7 +223,7 @@ start = end
 
 # Add Nb Options
 nb_options.append(len(df.index))
-nb_options_text.append("Newton-Raphson")
+nb_options_text.append("Implied Vol.")
 
 # Compute Log Forward Moneyness & Implied Total Variance
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
@@ -262,11 +268,14 @@ print(f"  - lambda = {SSVI_params['lambda_']}")
 
 # Set Graphs Infos
 fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
-fig.suptitle(f"Calibration Results (as of {spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=14)
+fig.suptitle(f"Calibration Results (as of {spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 
-# Plot Number of Options Used
-axs[0, 0].plot(nb_options_text, nb_options, "-")
-axs[0, 0].set_title("Options Per Calibration Steps")
+# Plot Number of Options Per Steps
+nb_options_text.append("Calibration")
+nb_options.append(nb_options[-1])
+axs[0, 0].step(nb_options_text, nb_options, where='post')
+axs[0, 0].set_title("Option Number Per Steps", fontsize=title_font_size)
+axs[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs[0, 0].grid()
 
 # Plot Implied Forward & ZC
@@ -280,9 +289,10 @@ for maturity in df["Maturity"].unique():
     maturity_list.append(maturity)
 axs[1, 0].plot(maturity_list, forward_list, label="Forward")
 axs[1, 0].plot(maturity_list, zc_list, label="ZC")
-axs[1, 0].set_title(f"Implied Forward & ZC")
+axs[1, 0].set_title(f"Market Implied Forward & ZC", fontsize=title_font_size)
 axs[1, 0].legend(loc="upper right")
 axs[1, 0].grid()
+axs[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs[1, 0].xaxis.set_major_formatter(DateFormatter("%b-%y"))
 axs[1, 0].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
@@ -298,7 +308,8 @@ for strike in df["Strike"].unique():
         axs[0, 1].plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
 axs[0, 1].grid()
 axs[0, 1].legend(loc="upper right")
-axs[0, 1].set_title("Market Implied Total Variance")
+axs[0, 1].set_title("Market Implied Total Variances", fontsize=title_font_size)
+axs[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs[0, 1].xaxis.set_major_formatter(DateFormatter("%b-%y"))
 axs[0, 1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
@@ -309,7 +320,8 @@ for maturity in df["Pretty Maturity"].unique():
     axs[1, 1].plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
 axs[1, 1].scatter(df["Strike"], df["IVM"] / 100, marker=".", color="black", label="BBG IV")
 axs[1, 1].grid()
-axs[1, 1].set_title("Market Implied Volatility")
+axs[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
 axs[1, 1].legend(loc="upper right")
 
 # Plot SVI Calibration
@@ -323,7 +335,8 @@ for maturity in df["Maturity"].unique():
     axs[0, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
 axs[0, 2].grid()
 axs[0, 2].legend(loc="upper right")
-axs[0, 2].set_title("SVI Calibration")
+axs[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs[0, 2].set_title("SVI Calibration", fontsize=title_font_size)
 
 # Plot SSVI Calibration
 k_list = np.linspace(-1, 1, 400)
@@ -336,7 +349,8 @@ for maturity in df["Maturity"].unique():
     axs[1, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
 axs[1, 2].grid()
 axs[1, 2].legend(loc="upper right")
-axs[1, 2].set_title("SSVI Calibration")
+axs[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs[1, 2].set_title("SSVI Calibration", fontsize=title_font_size)
 
 # Show Graphs
 plt.tight_layout()
