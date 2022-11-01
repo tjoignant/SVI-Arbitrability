@@ -144,14 +144,14 @@ nb_options_text.append("Arbitrages")
 df = df.sort_values(by="Maturity", ascending=True)
 for maturity in df["Maturity"].unique():
     df_reg = df[df["Maturity"] == maturity].copy()
-    # Remove Strikes With less than 1 Calls & Puts
+    # Remove Strikes with less than 1 Calls & Puts
     for strike in df_reg["Strike"].unique():
         if len(df_reg[(df_reg["Strike"] == strike)].index) == 1:
             df_reg = df_reg[df_reg["Strike"] != strike].copy()
-    # Remove Strikes With less than 2 Calls & Puts (no regression possible)
+    # Remove Maturities with less than 2 Pair of Call(K) & Put(K) (no regression possible)
     if len(df_reg.index) < 4:
         df = df[df["Maturity"] != maturity].copy()
-    # Else --> Compute ZC & Forward
+    # Else Compute ZC & Forward
     else:
         Y_list = []
         K_list = df_reg["Strike"].unique()
