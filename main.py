@@ -16,7 +16,7 @@ import black_scholes
 start = time.perf_counter()
 spot = 3375.46
 spot_date = dt.datetime(day=7, month=10, year=2022)
-min_volume = 1
+min_volume = 5
 nb_options = []
 nb_options_text = []
 tick_font_size = 8.5
@@ -184,23 +184,20 @@ nb_options.append(len(df.index))
 nb_options_text.append("ITM Opt.")
 
 # Compute Implied Volatilities
-df["Implied Vol"] = df.apply(
-    lambda x: black_scholes.BS_ImpliedVol(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                          MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+df["Implied Vol (Newton-Raphson)"] = df.apply(
+    lambda x: black_scholes.BS_IV_Newton_Raphson(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                          MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0])[0], axis=1)
+df["Implied Vol (Brent)"] = df.apply(
+    lambda x: black_scholes.BS_IV_Brent(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                          MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0])[0], axis=1)
 
-# # Compute Implied Volatilities with Brent method
-# df["Implied Vol Brent"] = df.apply(
-#     lambda x: black_scholes.BS_ImpliedVol_Brent(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-#                                           MktPrice=x["Mid"] / x["Spot"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
-# df["Ecart"] = abs(df["Implied Vol Brent"] - df["Implied Vol"])
-# comparison = []
-# for i in range(len(df["Implied Vol"])):
-#     comparison.append([])
-#     comparison[i].append(df["Implied Vol"].iloc[i])
-#     comparison[i].append(df["Implied Vol Brent"].iloc[i])
-#     comparison[i].append(df["Ecart"].iloc[i])
-#     print(comparison[i])
-# df.drop(["Implied Vol Brent", "Ecart"], axis=1)
+# Keep Newton-Raphson Implied Volatilities
+df["Implied Vol"] = df["Implied Vol (Brent)"]
+
+# Add Nb Options
+nb_options_brent = nb_options + [len(df[df["Implied Vol (Brent)"] != -1].index)]
+nb_options_nr = nb_options + [len(df[df["Implied Vol (Newton-Raphson)"] != -1].index)]
+nb_options_text.append("Implied Vol.")
 
 # Drop Error Points
 df = df[df["Implied Vol"] != -1].copy()
@@ -220,10 +217,6 @@ df_surface.sort_index(inplace=True)
 end = time.perf_counter()
 print(f"4/ Market Implied Volatilities Computed ({round(end - start, 1)}s)")
 start = end
-
-# Add Nb Options
-nb_options.append(len(df.index))
-nb_options_text.append("Implied Vol.")
 
 # Compute Log Forward Moneyness & Implied Total Variance
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
@@ -272,10 +265,13 @@ fig.suptitle(f"Calibration Results (as of {spot_date.strftime('%d-%b-%Y')})", fo
 
 # Plot Number of Options Per Steps
 nb_options_text.append("Calibration")
-nb_options.append(nb_options[-1])
-axs[0, 0].step(nb_options_text, nb_options, where='post')
+nb_options_nr.append(nb_options_nr[-1])
+nb_options_brent.append(nb_options_brent[-1])
+axs[0, 0].step(nb_options_text, nb_options_nr, "--", where='post', label="Newton Raphson")
+axs[0, 0].step(nb_options_text, nb_options_brent, where='post', label="Brent")
 axs[0, 0].set_title("Option Number Per Steps", fontsize=title_font_size)
 axs[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs[0, 0].legend(loc="upper right")
 axs[0, 0].grid()
 
 # Plot Implied Forward & ZC
