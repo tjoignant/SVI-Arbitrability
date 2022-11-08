@@ -234,7 +234,7 @@ start = end
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
-# Calibrate SVI Curves & Compute ATM Implied Total Variance
+# Calibrate SVI Curves, Compute ATM Implied Total Variance & Compute SVI Errors
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = calibration.SVI_calibration(
@@ -246,10 +246,15 @@ for maturity in df["Maturity"].unique():
     df.loc[df["Maturity"] == maturity, ['ATMF Implied TV']] = \
         calibration.SVI(k=0, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                         m_=SVI_params["m_"], sigma_=SVI_params["sigma_"])
+    df.loc[df["Maturity"] == maturity, ['SVI Errors']] = \
+        df[df["Maturity"] == maturity].apply(lambda x:
+            abs(calibration.SVI(k=x["Log Forward Moneyness"], a_=SVI_params["a_"], b_=SVI_params["b_"],
+                            rho_=SVI_params["rho_"], m_=SVI_params["m_"], sigma_=SVI_params["sigma_"])
+            - x["Implied TV"]), axis=1)
 
 # Timer
 end = time.perf_counter()
-print(f"6/ SVI Curves Calibrated ({round(end - start, 1)}s)")
+print(f"6/ SVI Curves Calibrated + Absolute Errors Computed ({round(end - start, 1)}s)")
 start = end
 
 # Calibrate SSVI Surface
@@ -260,9 +265,14 @@ SSVI_params = calibration.SSVI_calibration(
     weights_list=list(df["Implied Vol"]),
 )
 
+# Compute SSVI Errors
+df["SSVI Errors"] = df.apply(lambda x:
+            abs(calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"], rho_=SSVI_params["rho_"],
+                                 eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]) - x["Implied TV"]), axis=1)
+
 # Timer
 end = time.perf_counter()
-print(f"7/ SSVI Surface Calibrated ({round(end - start, 1)}s)")
+print(f"7/ SSVI Surface Calibrated + Absolute Errors Computed ({round(end - start, 1)}s)")
 start = end
 
 # Calibrate eSSVI Surface
@@ -273,9 +283,15 @@ eSSVI_params = calibration.eSSVI_calibration(
     weights_list=list(df["Implied Vol"]),
 )
 
+# Compute eSSVI Errors
+df["eSSVI Errors"] = df.apply(lambda x:
+            abs(calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"], a_=eSSVI_params["a_"],
+                                  b_=eSSVI_params["b_"], c_=eSSVI_params["c_"], eta_=eSSVI_params["eta_"],
+                                  lambda_=eSSVI_params["lambda_"]) - x["Implied TV"]), axis=1)
+
 # Timer
 end = time.perf_counter()
-print(f"8/ eSSVI Surface Calibrated ({round(end - start, 1)}s)")
+print(f"8/ eSSVI Surface Calibrated + Absolute Errors Computed ({round(end - start, 1)}s)")
 start = end
 
 # Set Graphs Infos
@@ -392,7 +408,6 @@ axs2[0, 1].legend(loc=legend_loc)
 axs2[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[0, 1].set_title("SSVI Calibration", fontsize=title_font_size)
 
-
 # Plot eSSVI Calibration
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
@@ -465,6 +480,16 @@ axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
 end = time.perf_counter()
 print(f"9/ Graphs Plotted ({round(end - start, 1)}s)")
 start = end
+
+# Display Average Volatility Calibration Errors
+df_error = pd.DataFrame({}, columns=["SVI", "SSVI", "eSSVI"], index=df["Pretty Maturity"].unique())
+print(f"\nAverage Volatility Calibration Errors :")
+for maturity in df["Pretty Maturity"].unique():
+    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+    df_error.loc[maturity, "SVI"] = df_bis['SVI Errors'].mean()
+    df_error.loc[maturity, "SSVI"] = df_bis['SSVI Errors'].mean()
+    df_error.loc[maturity, "eSSVI"] = df_bis['eSSVI Errors'].mean()
+print(df_error)
 
 # Show All Graphs
 plt.tight_layout()
