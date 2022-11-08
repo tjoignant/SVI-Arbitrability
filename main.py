@@ -21,6 +21,7 @@ nb_options = []
 nb_options_text = []
 tick_font_size = 8.5
 title_font_size = 11
+legend_loc = "upper right"
 
 # Set Pandas Display Settings
 pd.set_option('display.max_rows', 100)
@@ -215,7 +216,7 @@ df_surface.sort_index(inplace=True)
 
 # Timer
 end = time.perf_counter()
-print(f"4/ Market Implied Volatilities Computed ({round(end - start, 1)}s)")
+print(f"4/ Market Implied Volatilities Computed with Brent + Newton-Raphson ({round(end - start, 1)}s)")
 start = end
 
 # Compute Log Forward Moneyness & Implied Total Variance
@@ -253,26 +254,35 @@ end = time.perf_counter()
 print(f"6/ SSVI Surface Calibrated ({round(end - start, 1)}s)")
 start = end
 
-# Display Calibration Results
-print("\nSSVI calibrated parameters:")
-print(f"  - rho = {SSVI_params['rho_']}")
-print(f"  - eta = {SSVI_params['eta_']}")
-print(f"  - lambda = {SSVI_params['lambda_']}")
+# Calibrate eSSVI Surface
+eSSVI_params = calibration.eSSVI_calibration(
+    k_list=list(df["Log Forward Moneyness"]),
+    atmfTotVar_list=list(df["ATMF Implied TV"]),
+    mktTotVar_list=list(df["Implied TV"]),
+    weights_list=list(df["Implied Vol"]),
+)
+
+# Timer
+end = time.perf_counter()
+print(f"7/ eSSVI Surface Calibrated ({round(end - start, 1)}s)")
+start = end
 
 # Set Graphs Infos
-fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
-fig.suptitle(f"Calibration Results (as of {spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
+fig1, axs1 = plt.subplots(nrows=2, ncols=2, figsize=(15, 7.5))
+fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
+fig1.suptitle(f"Market Data Coherence Verification ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
+fig2.suptitle(f"Parametric Volatilities Calibration ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 
 # Plot Number of Options Per Steps
 nb_options_text.append("Calibration")
 nb_options_nr.append(nb_options_nr[-1])
 nb_options_brent.append(nb_options_brent[-1])
-axs[0, 0].step(nb_options_text, nb_options_nr, "--", where='post', label="Newton Raphson")
-axs[0, 0].step(nb_options_text, nb_options_brent, where='post', label="Brent")
-axs[0, 0].set_title("Option Number Per Steps", fontsize=title_font_size)
-axs[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs[0, 0].legend(loc="upper right")
-axs[0, 0].grid()
+axs1[0, 0].step(nb_options_text, nb_options_nr, "--", where='post', label="Newton Raphson")
+axs1[0, 0].step(nb_options_text, nb_options_brent, where='post', label="Brent")
+axs1[0, 0].set_title("Option Number Per Steps", fontsize=title_font_size)
+axs1[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs1[0, 0].legend(loc=legend_loc)
+axs1[0, 0].grid()
 
 # Plot Implied Forward & ZC
 maturity_list = []
@@ -283,14 +293,14 @@ for maturity in df["Maturity"].unique():
     forward_list.append(list(df_bis["Forward"].unique())[0])
     zc_list.append(list(df_bis["ZC"].unique())[0])
     maturity_list.append(maturity)
-axs[1, 0].plot(maturity_list, forward_list, label="Forward")
-axs[1, 0].plot(maturity_list, zc_list, label="ZC")
-axs[1, 0].set_title(f"Market Implied Forward & ZC", fontsize=title_font_size)
-axs[1, 0].legend(loc="upper right")
-axs[1, 0].grid()
-axs[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs[1, 0].xaxis.set_major_formatter(DateFormatter("%b-%y"))
-axs[1, 0].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+axs1[1, 0].plot(maturity_list, forward_list, label="Forward")
+axs1[1, 0].plot(maturity_list, zc_list, label="ZC")
+axs1[1, 0].set_title(f"Market Implied Forward & ZC", fontsize=title_font_size)
+axs1[1, 0].legend(loc="upper right")
+axs1[1, 0].grid()
+axs1[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs1[1, 0].xaxis.set_major_formatter(DateFormatter("%b-%y"))
+axs1[1, 0].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
 # Plot Implied Total Variance
 percentage = 70
@@ -301,24 +311,24 @@ for strike in df["Strike"].unique():
         for maturity in df_strike["Maturity"].unique():
             df_bis = df[(df["Strike"] == strike) & (df["Maturity"] == maturity)].copy()
             total_implied_var.append(df_bis["Implied TV"].unique())
-        axs[0, 1].plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
-axs[0, 1].grid()
-axs[0, 1].legend(loc="upper right")
-axs[0, 1].set_title("Market Implied Total Variances", fontsize=title_font_size)
-axs[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs[0, 1].xaxis.set_major_formatter(DateFormatter("%b-%y"))
-axs[0, 1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+        axs1[0, 1].plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
+axs1[0, 1].grid()
+axs1[0, 1].legend(loc=legend_loc)
+axs1[0, 1].set_title("Market Implied Total Variances", fontsize=title_font_size)
+axs1[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs1[0, 1].xaxis.set_major_formatter(DateFormatter("%b-%y"))
+axs1[0, 1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
 # Plot Market Implied Volatilities
 for maturity in df["Pretty Maturity"].unique():
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
-    axs[1, 1].plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
-axs[1, 1].scatter(df["Strike"], df["IVM"] / 100, marker=".", color="black", label="BBG IV")
-axs[1, 1].grid()
-axs[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
-axs[1, 1].legend(loc="upper right")
+    axs1[1, 1].plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
+axs1[1, 1].scatter(df["Strike"], df["IVM"] / 100, marker=".", color="black", label="BBG IV")
+axs1[1, 1].grid()
+axs1[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs1[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
+axs1[1, 1].legend(loc=legend_loc)
 
 # Plot SVI Calibration
 k_list = np.linspace(-1, 1, 400)
@@ -327,27 +337,96 @@ for maturity in df["Maturity"].unique():
     SVI_params = list(df_bis["SVI Params"])[0]
     svi_list = [calibration.SVI(k=k, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                                 m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]) for k in k_list]
-    axs[0, 2].plot(k_list, svi_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs[0, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
-axs[0, 2].grid()
-axs[0, 2].legend(loc="upper right")
-axs[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs[0, 2].set_title("SVI Calibration", fontsize=title_font_size)
+    axs2[0, 0].plot(k_list, svi_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs2[0, 0].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+axs2[0, 0].grid()
+axs2[0, 0].legend(loc=legend_loc)
+axs2[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[0, 0].set_title("SVI Calibration", fontsize=title_font_size)
 
 # Plot SSVI Calibration
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
-    svi_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
-                                 lambda_=SSVI_params["lambda_"]) for k in k_list]
-    axs[1, 2].plot(k_list, svi_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs[1, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
-axs[1, 2].grid()
-axs[1, 2].legend(loc="upper right")
-axs[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs[1, 2].set_title("SSVI Calibration", fontsize=title_font_size)
+    ssvi_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
+                                  lambda_=SSVI_params["lambda_"]) for k in k_list]
+    axs2[0, 1].plot(k_list, ssvi_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs2[0, 1].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+axs2[0, 1].grid()
+axs2[0, 1].legend(loc=legend_loc)
+axs2[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[0, 1].set_title("SSVI Calibration", fontsize=title_font_size)
 
-# Show Graphs
+
+# Plot eSSVI Calibration
+k_list = np.linspace(-1, 1, 400)
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    theta = list(df_bis["ATMF Implied TV"])[0]
+    essvi_list = [calibration.eSSVI(k=k, theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
+                                    eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
+    axs2[0, 2].plot(k_list, essvi_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs2[0, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+axs2[0, 2].grid()
+axs2[0, 2].legend(loc=legend_loc)
+axs2[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[0, 2].set_title("eSSVI Calibration", fontsize=title_font_size)
+
+# Plot SVI Parameters Evolution
+svi_a = []
+svi_b = []
+svi_rho = []
+svi_m = []
+svi_sigma = []
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    SVI_params = list(df_bis["SVI Params"])[0]
+    svi_a.append(SVI_params["a_"])
+    svi_b.append(SVI_params["b_"])
+    svi_rho.append(SVI_params["rho_"])
+    svi_m.append(SVI_params["m_"])
+    svi_sigma.append(SVI_params["sigma_"])
+axs2[1, 0].plot(df["Pretty Maturity"].unique(), svi_a, label="a")
+axs2[1, 0].plot(df["Pretty Maturity"].unique(), svi_b, label="b")
+axs2[1, 0].plot(df["Pretty Maturity"].unique(), svi_rho, label="rho")
+axs2[1, 0].plot(df["Pretty Maturity"].unique(), svi_m, label="m")
+axs2[1, 0].plot(df["Pretty Maturity"].unique(), svi_sigma, label="sigma")
+axs2[1, 0].grid()
+axs2[1, 0].legend(loc=legend_loc)
+axs2[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[1, 0].set_title("SVI Parameters Evolution", fontsize=title_font_size)
+
+# Plot SSVI/eSSVI Phi Parameter Evolution
+ssvi_phi = []
+essvi_phi = []
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    theta = list(df_bis["ATMF Implied TV"])[0]
+    ssvi_phi.append(calibration.SSVI_phi(theta=theta, eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]))
+    essvi_phi.append(calibration.eSSVI_phi(theta=theta, eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]))
+axs2[1, 1].plot(df["Pretty Maturity"].unique(), ssvi_phi, label="SSVI")
+axs2[1, 1].plot(df["Pretty Maturity"].unique(), essvi_phi, label="eSSVI")
+axs2[1, 1].grid()
+axs2[1, 1].legend(loc=legend_loc)
+axs2[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[1, 1].set_title("Phi Parameter Evolution", fontsize=title_font_size)
+
+# Plot SSVI/eSSVI Rho Parameter Evolution
+ssvi_rho = []
+essvi_rho = []
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    theta = list(df_bis["ATMF Implied TV"])[0]
+    ssvi_rho.append(SSVI_params["rho_"])
+    essvi_rho.append(calibration.eSSVI_rho(theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"]))
+axs2[1, 2].plot(df["Pretty Maturity"].unique(), ssvi_rho, label="SSVI")
+axs2[1, 2].plot(df["Pretty Maturity"].unique(), essvi_rho, label="eSSVI")
+axs2[1, 2].grid()
+axs2[1, 2].legend(loc=legend_loc)
+axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
+
+# Show All Graphs
 plt.tight_layout()
 plt.show()

@@ -105,7 +105,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
     :param weights_list: weights list : [w_1, w_2, w_3, ...]
     :return: calibrated parameters list
     """
-    init_params_list = [-0.5, 1, 0.5]
+    init_params_list = [-0.75, 1, 0.5]
     inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
     result = optimize.minimize(
         SSVI_minimisation_function,
@@ -118,4 +118,85 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         "rho_": final_params[0],
         "eta_": final_params[1],
         "lambda_": final_params[2],
+    }
+
+
+def eSSVI_phi(theta: float, eta_: float, lambda_: float):
+    """
+    :param theta: ATM total variance
+    :param eta_: curvature function parameter
+    :param lambda_: curvature function parameter
+    :return: curvature function result
+    """
+    return eta_ * pow(theta, -lambda_)
+
+
+def eSSVI_rho(theta: float, a_: float, b_: float, c_: float):
+    """
+    :param theta: ATM total variance
+    :param a_: spot/vol correlation function parameter
+    :param b_: spot/vol correlation function parameter
+    :param c_: spot/vol correlation function parameter
+    :return: curvature function result
+    """
+    return a_ * np.exp(-b_ * theta) + c_
+
+
+def eSSVI(k: float, theta: float, a_: float, b_: float, c_: float, eta_: float, lambda_: float):
+    """
+    :param k: log forward moneyness
+    :param theta: ATM total variance
+    :param a_: spot/vol correlation function parameter
+    :param b_: spot/vol correlation function parameter
+    :param c_: spot/vol correlation function parameter
+    :param eta_: curvature function parameter
+    :param lambda_: curvature function parameter
+    :return: total variance
+    """
+    return 0.5 * theta * (
+            1 + eSSVI_rho(theta, a_, b_, c_) * SSVI_phi(theta, eta_, lambda_) * k +
+            np.sqrt(pow(SSVI_phi(theta, eta_, lambda_) * k + eSSVI_rho(theta, a_, b_, c_), 2) + 1 -
+                    pow(eSSVI_rho(theta, a_, b_, c_), 2)))
+
+
+def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
+    """
+    :param params_list: parameters list : [a_, b_, c_, eta_, lambda_]
+    :param inputs_list: inputs list : [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
+    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: weights list : [w_1, w_2, w_3, ...]
+    :return: mean squared volatility error (MSVE)
+    """
+    MSVE = 0
+    for i in range(0, len(inputs_list)):
+        MSVE = MSVE + weights_list[i] * pow(
+            eSSVI(k=inputs_list[i][0], theta=inputs_list[i][1],
+                  a_=params_list[0], b_=params_list[1], c_=params_list[2], eta_=params_list[3], lambda_=params_list[4])
+            - mktTotVar_list[i], 2)
+    return MSVE / len(inputs_list)
+
+
+def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list):
+    """
+    :param k_list: inputs list : [k_1, k_2, k_3, ...]
+    :param atmfTotVar_list: ATMF implied total variance list : [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
+    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: weights list : [w_1, w_2, w_3, ...]
+    :return: calibrated parameters list
+    """
+    init_params_list = [-0.75, 0.5, 0, 1, 0.5]
+    inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
+    result = optimize.minimize(
+        eSSVI_minimisation_function,
+        x0=init_params_list,
+        method='nelder-mead',
+        args=(inputs_list, mktTotVar_list, weights_list)
+    )
+    final_params = list(result.x)
+    return {
+        "a_": final_params[0],
+        "b_": final_params[1],
+        "c_": final_params[2],
+        "eta_": final_params[3],
+        "lambda_": final_params[4],
     }
