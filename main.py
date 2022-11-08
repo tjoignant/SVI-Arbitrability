@@ -22,6 +22,8 @@ nb_options_text = []
 tick_font_size = 8.5
 title_font_size = 11
 legend_loc = "upper right"
+color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
+              'tab:olive', 'tab:cyan']
 
 # Set Pandas Display Settings
 pd.set_option('display.max_rows', 100)
@@ -56,10 +58,6 @@ df["Strike Perc"] = df["Strike"] / df["Spot"]
 df["Mid"] = (df["Bid"] + df["Ask"]) / 2
 df["Maturity (in Y)"] = df.apply(lambda x: (x["Maturity"] - x["Spot Date"]).days / 365, axis=1)
 df["Pretty Maturity"] = df["Maturity"].apply(lambda x: x.strftime("%b-%y"))
-
-# Dropping Useless Columns
-df = df[["Type", "Underlying", "Spot", "Spot Date", "Maturity", "Pretty Maturity", "Maturity (in Y)", "Strike",
-         "Strike Perc", "Mid", "Volm", "IVM"]]
 
 # Timer
 end = time.perf_counter()
@@ -219,6 +217,19 @@ end = time.perf_counter()
 print(f"4/ Market Implied Volatilities Computed with Brent + Newton-Raphson ({round(end - start, 1)}s)")
 start = end
 
+# Compute Delta & Vega
+df["Delta"] = df.apply(
+    lambda x: black_scholes.BS_Delta(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                     v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+df["Vega"] = df.apply(
+    lambda x: black_scholes.BS_Vega(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                     v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+
+# Timer
+end = time.perf_counter()
+print(f"5/ Market Implied Delta & Vega Computed ({round(end - start, 1)}s)")
+start = end
+
 # Compute Log Forward Moneyness & Implied Total Variance
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
@@ -238,7 +249,7 @@ for maturity in df["Maturity"].unique():
 
 # Timer
 end = time.perf_counter()
-print(f"5/ SVI Curves Calibrated ({round(end - start, 1)}s)")
+print(f"6/ SVI Curves Calibrated ({round(end - start, 1)}s)")
 start = end
 
 # Calibrate SSVI Surface
@@ -251,7 +262,7 @@ SSVI_params = calibration.SSVI_calibration(
 
 # Timer
 end = time.perf_counter()
-print(f"6/ SSVI Surface Calibrated ({round(end - start, 1)}s)")
+print(f"7/ SSVI Surface Calibrated ({round(end - start, 1)}s)")
 start = end
 
 # Calibrate eSSVI Surface
@@ -264,11 +275,11 @@ eSSVI_params = calibration.eSSVI_calibration(
 
 # Timer
 end = time.perf_counter()
-print(f"7/ eSSVI Surface Calibrated ({round(end - start, 1)}s)")
+print(f"8/ eSSVI Surface Calibrated ({round(end - start, 1)}s)")
 start = end
 
 # Set Graphs Infos
-fig1, axs1 = plt.subplots(nrows=2, ncols=2, figsize=(15, 7.5))
+fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig1.suptitle(f"Market Data Coherence Verification ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 fig2.suptitle(f"Parametric Volatilities Calibration ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
@@ -329,6 +340,29 @@ axs1[1, 1].grid()
 axs1[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
 axs1[1, 1].legend(loc=legend_loc)
+
+# Plot Market Implied Deltas
+for maturity, i in zip(df["Pretty Maturity"].unique(), range(0, len(df["Pretty Maturity"].unique()))):
+    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+    df_bis = df_bis.sort_values(by="Strike", ascending=False)
+    df_put_bis = df_bis[(df_bis["Type"] == "Put")].copy()
+    df_call_bis = df_bis[(df_bis["Type"] == "Call")].copy()
+    axs1[0, 2].plot(df_put_bis["Strike"], df_put_bis["Delta"], label=maturity, color=color_list[i])
+    axs1[0, 2].plot(df_call_bis["Strike"], df_call_bis["Delta"], color=color_list[i])
+axs1[0, 2].grid()
+axs1[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs1[0, 2].set_title("Market Implied Deltas", fontsize=title_font_size)
+axs1[0, 2].legend(loc=legend_loc)
+
+# Plot Market Implied Vegas
+for maturity in df["Pretty Maturity"].unique():
+    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+    df_bis = df_bis.sort_values(by="Strike", ascending=False)
+    axs1[1, 2].plot(df_bis["Strike"], df_bis["Vega"], label=maturity)
+axs1[1, 2].grid()
+axs1[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs1[1, 2].set_title("Market Implied Vegas", fontsize=title_font_size)
+axs1[1, 2].legend(loc=legend_loc)
 
 # Plot SVI Calibration
 k_list = np.linspace(-1, 1, 400)
@@ -426,6 +460,11 @@ axs2[1, 2].grid()
 axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
+
+# Timer
+end = time.perf_counter()
+print(f"9/ Graphs Plotted ({round(end - start, 1)}s)")
+start = end
 
 # Show All Graphs
 plt.tight_layout()
