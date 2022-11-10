@@ -57,6 +57,12 @@ def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list):
     }
 
 
+def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: float, rho_: float, m_: float, sigma_: float):
+    num = b_ * ((np.log(strike/forward) - m_) / (np.sqrt(pow(np.log(strike/forward) - m_, 2) + pow(sigma_, 2))) + rho_)
+    den = 2 * maturity * strike * np.sqrt((a_ + b_ * (np.sqrt(pow(np.log(strike/forward) - m_, 2) + pow(sigma_, 2)) + rho_ * np.log(strike/forward) - m_ * rho_)) / maturity)
+    return num / den
+
+
 def SSVI_phi(theta: float, eta_: float, lambda_: float):
     """
     :param theta: ATM total variance
@@ -119,6 +125,13 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         "eta_": final_params[1],
         "lambda_": final_params[2],
     }
+
+
+def SSVI_skew(strike: float, theta: float, forward: float, maturity: float, rho_: float, eta_: float, lambda_: float):
+    phi = SSVI_phi(theta, eta_, lambda_)
+    num = 0.5 * theta * ((phi * (rho_ + phi * np.log(strike / forward))) / (strike * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1))) + (rho_ * phi) / strike)
+    den = 2 * maturity * np.sqrt((0.5 * theta * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(strike/forward)) + 1) / maturity)
+    return num / den
 
 
 def eSSVI_phi(theta: float, eta_: float, lambda_: float):
@@ -200,3 +213,12 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         "eta_": final_params[3],
         "lambda_": final_params[4],
     }
+
+
+def eSSVI_skew(strike: float, theta: float, forward: float, maturity: float, eta_: float, lambda_: float, a_: float,
+               b_: float, c_: float):
+    rho = eSSVI_rho(theta, a_, b_, c_)
+    phi = eSSVI_phi(theta, eta_, lambda_)
+    num = 0.5 * theta * ((phi * (rho + phi * np.log(strike / forward))) / (strike * (np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1))) + (rho * phi) / strike)
+    den = 2 * maturity * np.sqrt((0.5 * theta * (np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(strike/forward)) + 1) / maturity)
+    return num / den

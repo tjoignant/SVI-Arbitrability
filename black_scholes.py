@@ -86,6 +86,26 @@ def BS_Delta(f, k, t, v, df, OptType):
     return switcher.get(OptType.upper(), 0)
 
 
+def BS_Delta_Strike(f, k, t, v, df, OptType):
+    """
+    :param f: Forward (in %)
+    :param k: Strike (in %)
+    :param t: Maturity (in Years)
+    :param v: Constant Annual Volatility (in %)
+    :param df: Discount Factor (in %)
+    :param OptType: Either "C", "P", "C+P" or "C-P"
+    :return: Delta
+    """
+    d2 = BS_d1(f, k, t, v)
+    switcher = {
+        "C": -df * SNorm(d2),
+        "P": df * SNorm(-d2),
+        "C+P": df * (-SNorm(d2) + SNorm(-d2)),
+        "C-P": df * (-SNorm(d2) - SNorm(-d2)),
+    }
+    return switcher.get(OptType.upper(), 0)
+
+
 def BS_Theta(f, k, t, v, df, r, OptType):
     """
     :param f: Forward (in %)

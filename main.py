@@ -2,6 +2,7 @@ import os
 import time
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import datetime as dt
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -56,6 +57,7 @@ df["Strike Perc"] = df["Strike"] / df["Spot"]
 
 # Compute Mid Price & Maturity (in years)
 df["Mid"] = (df["Bid"] + df["Ask"]) / 2
+df["Mid Perc"] = df["Mid"] / df["Spot"]
 df["Maturity (in Y)"] = df.apply(lambda x: (x["Maturity"] - x["Spot Date"]).days / 365, axis=1)
 df["Pretty Maturity"] = df["Maturity"].apply(lambda x: x.strftime("%b-%y"))
 
@@ -86,13 +88,20 @@ while nb_arbitrage > 0:
                                             df_check["Mid"].shift(-2) * (
                                                     (df_check["Strike"].shift(-1) - df_check["Strike"]) /
                                                     (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)))
-                    id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
+                    df_check["Spread"] = df_check["Mid"] - df_check["Mid"].shift(-1)
+                    id_with_butterfly_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
+                    id_with_spread_arbitrage = list(df_check[df_check["Spread"] <= 0].index)
                     id_to_remove = []
-                    for row_id in id_with_arbitrage:
+                    for row_id in id_with_butterfly_arbitrage:
                         row_id_pos = list(df_check.index).index(row_id)
                         df_select = df_check.loc[
                             [row_id, min(df_check.index[row_id_pos + 1], df_check.index[-1]),
                              min(df_check.index[row_id_pos + 2], df_check.index[-1])]]
+                        id_to_remove.append(df_select[['Volm']].idxmin()[0])
+                    for row_id in id_with_spread_arbitrage:
+                        row_id_pos = list(df_check.index).index(row_id)
+                        df_select = df_check.loc[
+                            [row_id, min(df_check.index[row_id_pos + 1], df_check.index[-1])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 else:
                     df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
@@ -103,12 +112,19 @@ while nb_arbitrage > 0:
                                                                             "Strike"]) / (
                                                                                 df_check["Strike"].shift(2) -
                                                                                 df_check["Strike"].shift(1)))
-                    id_with_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
+                    df_check["Spread"] = df_check["Mid"] - df_check["Mid"].shift(1)
+                    id_with_butterfly_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
+                    id_with_spread_arbitrage = list(df_check[df_check["Spread"] <= 0].index)
                     id_to_remove = []
-                    for row_id in id_with_arbitrage:
+                    for row_id in id_with_butterfly_arbitrage:
                         row_id_pos = list(df_check.index).index(row_id)
                         df_select = df_check.loc[[row_id, max(df_check.index[row_id_pos - 1], df_check.index[0]),
                                                   max(df_check.index[row_id_pos - 2], df_check.index[0])]]
+                        id_to_remove.append(df_select[['Volm']].idxmin()[0])
+                    for row_id in id_with_spread_arbitrage:
+                        row_id_pos = list(df_check.index).index(row_id)
+                        df_select = df_check.loc[
+                            [row_id, max(df_check.index[row_id_pos - 1], df_check.index[0])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 index_list = list(set(index_list + id_to_remove))
     # No Calendar Spread Arbitrage
@@ -140,7 +156,6 @@ nb_options.append(len(df.index))
 nb_options_text.append("Arbitrages")
 
 # Retrieve Forward & ZC (per maturity)
-df = df.sort_values(by="Maturity", ascending=True)
 for maturity in df["Maturity"].unique():
     df_reg = df[df["Maturity"] == maturity].copy()
     # Remove Strikes with less than 1 Calls & Puts
@@ -209,18 +224,18 @@ for maturity in df["Maturity"].unique():
     df_mat = df_mat[["Implied Vol"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_surface = pd.concat(df_list, axis=1)
-df_surface.sort_index(inplace=True)
+df_iv_surface = pd.concat(df_list, axis=1)
+df_iv_surface.sort_index(inplace=True)
 
 # Timer
 end = time.perf_counter()
 print(f"4/ Market Implied Volatilities Computed with Brent + Newton-Raphson ({round(end - start, 1)}s)")
 start = end
 
-# Compute Delta & Vega
-df["Delta"] = df.apply(
-    lambda x: black_scholes.BS_Delta(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                     v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+# Compute Delta Strike & Vega
+df["Delta Strike"] = df.apply(
+    lambda x: black_scholes.BS_Delta_Strike(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                            v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
 df["Vega"] = df.apply(
     lambda x: black_scholes.BS_Vega(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                      v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
@@ -230,11 +245,33 @@ end = time.perf_counter()
 print(f"5/ Market Implied Delta & Vega Computed ({round(end - start, 1)}s)")
 start = end
 
+# Compute Gourion-Lucic Bounds
+df["Mid Forward Adj."] = df["Mid"] / df["Forward"]
+for maturity in df["Maturity"].unique():
+    for type in df["Type"].unique():
+        # Filter Condition
+        cond = (df["Maturity"] == maturity) & (df["Type"] == type)
+        # S_min
+        df_bis = df[cond].copy()
+        df.loc[cond, ['s_min']] = ((df_bis["Mid"] - df_bis["Mid"].shift(1)) / (
+                df_bis["Strike"] - df_bis["Strike"].shift(1)) - df_bis["Delta Strike"]) / df_bis["Vega"]
+        df.loc[df[cond].index[0], "s_min"] = ((df_bis["Mid"].values[0] - df_bis["Spot"].values[0]) / (
+                df_bis["Strike"].values[0]) - df_bis["Delta Strike"].values[0]) / df_bis["Vega"].values[0]
+        # S_max
+        df.loc[cond, ['s_max']] = ((df_bis["Mid"].shift(-1) - df_bis["Mid"]) / (
+                df_bis["Strike"].shift(-1) - df_bis["Strike"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
+        df.loc[df[cond].index[-1], "s_max"] = - df_bis["Delta Strike"].values[-1] / df_bis["Vega"].values[-1]
+
+# Timer
+end = time.perf_counter()
+print(f"6/ Gourion-Lucic Bounds Computed (Skew & Convexity) ({round(end - start, 1)}s)")
+start = end
+
 # Compute Log Forward Moneyness & Implied Total Variance
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
-# Calibrate SVI Curves, Compute ATM Implied Total Variance & Compute SVI Errors
+# Calibrate SVI Curves, Compute ATM Implied Total Variance, Compute Absolute SVI Errors & Skew
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = calibration.SVI_calibration(
@@ -251,10 +288,14 @@ for maturity in df["Maturity"].unique():
             abs(calibration.SVI(k=x["Log Forward Moneyness"], a_=SVI_params["a_"], b_=SVI_params["b_"],
                             rho_=SVI_params["rho_"], m_=SVI_params["m_"], sigma_=SVI_params["sigma_"])
             - x["Implied TV"]), axis=1)
+    df.loc[df["Maturity"] == maturity, ['SVI Skew']] = df[df["Maturity"] == maturity].apply(lambda x:
+                calibration.SVI_skew(strike=x["Strike Perc"], forward=x["Forward"], maturity=x["Maturity (in Y)"],
+                                     a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
+                                     m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]), axis=1)
 
 # Timer
 end = time.perf_counter()
-print(f"6/ SVI Curves Calibrated + Absolute Errors Computed ({round(end - start, 1)}s)")
+print(f"7/ SVI Curves Calibrated ({round(end - start, 1)}s)")
 start = end
 
 # Calibrate SSVI Surface
@@ -270,9 +311,15 @@ df["SSVI Errors"] = df.apply(lambda x:
             abs(calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"], rho_=SSVI_params["rho_"],
                                  eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]) - x["Implied TV"]), axis=1)
 
+# Compute SSVI Skew
+df["SSVI Skew"] = df.apply(lambda x:
+            calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"], maturity=x["Maturity (in Y)"],
+                                  forward=x["Forward"], rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
+                                  lambda_=SSVI_params["lambda_"]), axis=1)
+
 # Timer
 end = time.perf_counter()
-print(f"7/ SSVI Surface Calibrated + Absolute Errors Computed ({round(end - start, 1)}s)")
+print(f"8/ SSVI Surface Calibrated ({round(end - start, 1)}s)")
 start = end
 
 # Calibrate eSSVI Surface
@@ -289,16 +336,84 @@ df["eSSVI Errors"] = df.apply(lambda x:
                                   b_=eSSVI_params["b_"], c_=eSSVI_params["c_"], eta_=eSSVI_params["eta_"],
                                   lambda_=eSSVI_params["lambda_"]) - x["Implied TV"]), axis=1)
 
+# Compute eSSVI Skew
+df["eSSVI Skew"] = df.apply(lambda x:
+            calibration.eSSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"], maturity=x["Maturity (in Y)"],
+                                   forward=x["Forward"], eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"],
+                                   a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],), axis=1)
+
 # Timer
 end = time.perf_counter()
-print(f"8/ eSSVI Surface Calibrated + Absolute Errors Computed ({round(end - start, 1)}s)")
+print(f"9/ eSSVI Surface Calibrated ({round(end - start, 1)}s)")
 start = end
+
+# Compute Average Volatility Calibration Errors
+df_error = pd.DataFrame({}, columns=["SVI", "SSVI", "eSSVI"], index=df["Pretty Maturity"].unique())
+for maturity in df["Pretty Maturity"].unique():
+    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+    df_error.loc[maturity, "SVI"] = df_bis['SVI Errors'].mean()
+    df_error.loc[maturity, "SSVI"] = df_bis['SSVI Errors'].mean()
+    df_error.loc[maturity, "eSSVI"] = df_bis['eSSVI Errors'].mean()
+
+# Compute Gourion-Lucic Bounds Verification
+df["SVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 0, axis=1)
+df["SSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 0, axis=1)
+df["eSSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 0, axis=1)
+
+# Create Gourion-Lucic Bounds Arbitrability Surface (SVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SVI Skew GL"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_svi_arb_surface = pd.concat(df_list, axis=1)
+df_svi_arb_surface.sort_index(inplace=True)
+
+# Create Gourion-Lucic Bounds Arbitrability Surface (SSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SSVI Skew GL"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_ssvi_arb_surface = pd.concat(df_list, axis=1)
+df_ssvi_arb_surface.sort_index(inplace=True)
+
+# Create Gourion-Lucic Bounds Arbitrability Surface (eSSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["eSSVI Skew GL"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_essvi_arb_surface = pd.concat(df_list, axis=1)
+df_essvi_arb_surface.sort_index(inplace=True)
+
+# Timer
+end = time.perf_counter()
+print(f"10/ Arbitrability Tests Concluded (Shark Jaw / Gourion-Lucic Bounds) ({round(end - start, 1)}s)")
+start = end
+
+# Export Dataframes
+with pd.ExcelWriter("Results.xlsx") as writer:
+    df.to_excel(writer, sheet_name="Dataframe")
+    df_iv_surface.to_excel(writer, sheet_name="IV Surface")
+    df_error.to_excel(writer, sheet_name="Calibration Errors")
+
+# Reorder Dataframe
+df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
 
 # Set Graphs Infos
 fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
+fig3, axs3 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig1.suptitle(f"Market Data Coherence Verification ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 fig2.suptitle(f"Parametric Volatilities Calibration ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
+fig3.suptitle(f"Arbitrability Gourion-Lucic Bounds Test ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 
 # Plot Number of Options Per Steps
 nb_options_text.append("Calibration")
@@ -357,17 +472,17 @@ axs1[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
 axs1[1, 1].legend(loc=legend_loc)
 
-# Plot Market Implied Deltas
+# Plot Market Implied Delta Strike
 for maturity, i in zip(df["Pretty Maturity"].unique(), range(0, len(df["Pretty Maturity"].unique()))):
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
     df_put_bis = df_bis[(df_bis["Type"] == "Put")].copy()
     df_call_bis = df_bis[(df_bis["Type"] == "Call")].copy()
-    axs1[0, 2].plot(df_put_bis["Strike"], df_put_bis["Delta"], label=maturity, color=color_list[i])
-    axs1[0, 2].plot(df_call_bis["Strike"], df_call_bis["Delta"], color=color_list[i])
+    axs1[0, 2].plot(df_put_bis["Strike"], df_put_bis["Delta Strike"], label=maturity, color=color_list[i])
+    axs1[0, 2].plot(df_call_bis["Strike"], df_call_bis["Delta Strike"], color=color_list[i])
 axs1[0, 2].grid()
 axs1[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[0, 2].set_title("Market Implied Deltas", fontsize=title_font_size)
+axs1[0, 2].set_title("Market Implied Deltas Strike", fontsize=title_font_size)
 axs1[0, 2].legend(loc=legend_loc)
 
 # Plot Market Implied Vegas
@@ -476,20 +591,13 @@ axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
 
+# Plot SVI Arbitrability Heatmap
+# g1 = sns.heatmap(df_svi_arb_surface.values, ax=axs3[0, 0])
+
 # Timer
 end = time.perf_counter()
-print(f"9/ Graphs Plotted ({round(end - start, 1)}s)")
+print(f"11/ Graphs Plotted ({round(end - start, 1)}s)")
 start = end
-
-# Display Average Volatility Calibration Errors
-df_error = pd.DataFrame({}, columns=["SVI", "SSVI", "eSSVI"], index=df["Pretty Maturity"].unique())
-print(f"\nAverage Volatility Calibration Errors :")
-for maturity in df["Pretty Maturity"].unique():
-    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
-    df_error.loc[maturity, "SVI"] = df_bis['SVI Errors'].mean()
-    df_error.loc[maturity, "SSVI"] = df_bis['SSVI Errors'].mean()
-    df_error.loc[maturity, "eSSVI"] = df_bis['eSSVI Errors'].mean()
-print(df_error)
 
 # Show All Graphs
 plt.tight_layout()
