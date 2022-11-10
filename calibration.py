@@ -63,6 +63,38 @@ def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: floa
     return num / den
 
 
+def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_: float, rho_: float, m_: float,
+                  sigma_: float):
+    num1 = pow(np.log(strike / forward) - m_, 2)
+    num1 = -num1
+    den1 = pow(strike, 2) * pow(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2), 3 / 2)
+
+    num2 = np.log(strike / forward) - m_
+    num2 = -num2
+    den2 = pow(strike, 2) * np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2))
+
+    num3 = 1
+    den3 = pow(strike, 2) * np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2))
+
+    num4 = -rho_
+    den4 = pow(strike, 2)
+
+    dentot = 2 * maturity * np.sqrt((a_ + b_*(np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_*(
+        np.log(strike / forward) - m_))) / maturity)
+
+    firstterm = (b_ * ((num1 / den1) + (num2 / den2) + (num3 / den3) + (num4 / den4))) / dentot
+
+    num5 = pow(b_, 2) * pow(((np.log(strike / forward) - m_) / (
+                strike * np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)))) + rho_ / strike, 2)
+    den5 = 4 * pow(maturity, 2)
+    pow((a_ + b_*(np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_ * (
+                np.log(strike / forward) - m_))) / maturity, 3 / 2)
+
+    secondterm = num5 / den5
+
+    return firstterm - secondterm
+
+
 def SSVI_phi(theta: float, eta_: float, lambda_: float):
     """
     :param theta: ATM total variance
