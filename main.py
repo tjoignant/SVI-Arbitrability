@@ -17,7 +17,8 @@ import black_scholes
 start = time.perf_counter()
 spot = 3375.46
 spot_date = dt.datetime(day=7, month=10, year=2022)
-min_volume = 5
+min_volume = 10
+strike_list = [2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000]
 nb_options = []
 nb_options_text = []
 tick_font_size = 8.5
@@ -363,43 +364,47 @@ df["eSSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["eSSVI Skew"] < x["
 # Create Gourion-Lucic Bounds Arbitrability Surface (SVI)
 df_list = []
 for maturity in df["Maturity"].unique():
-    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
     df_mat = df_mat[["SVI Skew GL"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_svi_arb_surface = pd.concat(df_list, axis=1)
-df_svi_arb_surface.sort_index(inplace=True)
+df_svi_skew_arb_surface = pd.concat(df_list, axis=1)
+df_svi_skew_arb_surface.sort_index(inplace=True)
 
 # Create Gourion-Lucic Bounds Arbitrability Surface (SSVI)
 df_list = []
 for maturity in df["Maturity"].unique():
-    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
     df_mat = df_mat[["SSVI Skew GL"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_ssvi_arb_surface = pd.concat(df_list, axis=1)
-df_ssvi_arb_surface.sort_index(inplace=True)
+df_ssvi_skew_arb_surface = pd.concat(df_list, axis=1)
+df_ssvi_skew_arb_surface.sort_index(inplace=True)
 
 # Create Gourion-Lucic Bounds Arbitrability Surface (eSSVI)
 df_list = []
 for maturity in df["Maturity"].unique():
-    df_mat = df[(df["Maturity"] == maturity)].copy()
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
     df_mat = df_mat[["eSSVI Skew GL"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_essvi_arb_surface = pd.concat(df_list, axis=1)
-df_essvi_arb_surface.sort_index(inplace=True)
+df_essvi_skew_arb_surface = pd.concat(df_list, axis=1)
+df_essvi_skew_arb_surface.sort_index(inplace=True)
 
 # Timer
 end = time.perf_counter()
 print(f"10/ Arbitrability Tests Concluded (Shark Jaw / Gourion-Lucic Bounds) ({round(end - start, 1)}s)")
 start = end
 
+# Create Result Folder (if do not exist)
+if not os.path.exists('results'):
+   os.makedirs('results')
+
 # Export Dataframes
-with pd.ExcelWriter("Results.xlsx") as writer:
+with pd.ExcelWriter("results/Results.xlsx") as writer:
     df.to_excel(writer, sheet_name="Dataframe")
     df_iv_surface.to_excel(writer, sheet_name="IV Surface")
     df_error.to_excel(writer, sheet_name="Calibration Errors")
@@ -410,10 +415,10 @@ df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
 # Set Graphs Infos
 fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
-fig3, axs3 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
+fig3, axs3 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5), sharey=True)
 fig1.suptitle(f"Market Data Coherence Verification ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 fig2.suptitle(f"Parametric Volatilities Calibration ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
-fig3.suptitle(f"Arbitrability Gourion-Lucic Bounds Test ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
+fig3.suptitle(f"Arbitrability Gourion-Lucic Bounds Tests ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
 
 # Plot Number of Options Per Steps
 nb_options_text.append("Calibration")
@@ -591,8 +596,19 @@ axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
 
-# Plot SVI Arbitrability Heatmap
-# g1 = sns.heatmap(df_svi_arb_surface.values, ax=axs3[0, 0])
+# Plot SVI Skew Arbitrability Heatmaps (of most liquid strikes)
+g1 = sns.heatmap(df_svi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, vmin=-1, vmax=1)
+g2 = sns.heatmap(df_ssvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 1], cbar=False, vmin=-1, vmax=1)
+g3 = sns.heatmap(df_essvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 2], vmin=-1, vmax=1)
+for g, ax, name in zip([g1, g2, g3], [axs3[0, 0], axs3[0, 1], axs3[0, 2]], ["SVI", "SSVI", "eSSVI"]):
+    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+    ax.set_title(f"{name} Skew", fontsize=title_font_size)
+    g.set_ylabel('')
+    g.set_xlabel('')
+    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
+    g.set_yticklabels([f"{int(strike/spot*100)}%" for strike in strike_list], rotation=0)
+
+# Plot SVI Convexity Arbitrability Heatmaps (of most liquid strikes)
 
 # Timer
 end = time.perf_counter()
