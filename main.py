@@ -224,7 +224,7 @@ df = df[df["Implied Vol"] != -1].copy()
 
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ Market Implied Volatilities Computed with Brent + Newton-Raphson ({round(end - start, 1)}s)")
+print(f"{timer_id}/ Market Implied Volatilities Computed with Brent & Newton-Raphson ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -437,7 +437,7 @@ for maturity in df["Maturity"].unique():
                                                                                                          "sigma_"]),
                                                                                                  axis=1)
 
-# Compute BS Delta Strike, Vega, d1, d2
+# Compute BS Delta Strike, Vega, d1 & d2
 df["Delta Strike"] = df.apply(
     lambda x: black_scholes.BS_Delta_Strike(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                             v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
@@ -450,6 +450,9 @@ df["d1"] = df.apply(
 df["d2"] = df.apply(
     lambda x: black_scholes.BS_d2(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                   v=x["Implied Vol"]), axis=1)
+
+# Reorder Dataframe
+df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
 
 # Compute Gourion-Lucic Skew Bounds
 df["Mid Forward Adj."] = df["Mid"] / df["Forward"]
@@ -468,23 +471,23 @@ for maturity in df["Maturity"].unique():
                 df_bis["Strike"].shift(-1) - df_bis["Strike"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
         df.loc[df[cond].index[-1], "s_max"] = - df_bis["Delta Strike"].values[-1] / df_bis["Vega"].values[-1]
 
-# Compute SVI, SSVI, eSSVI Gourion-Lucic Convexity Bounds
+# Compute SVI, SSVI & eSSVI Gourion-Lucic Convexity Bounds
 df["s_conv_min SVI"] = df.apply(
     lambda x: -(1 / x["SVI Vol"]) * (1 / (x["Strike"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["SVI Skew"]) *
               (1 / (x["Strike"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["SVI Skew"]) - (1 / x["Strike"]) *
               x["SVI Skew"], axis=1)
 
-# Compute SVI, SSVI, eSSVI Gourion-Lucic Skew Bounds Test
-df["SVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 0, axis=1)
-df["SSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 0, axis=1)
-df["eSSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 0, axis=1)
+# Compute SVI, SSVI & eSSVI Gourion-Lucic Skew Bounds Test
+df["SVI Skew Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
+df["SSVI Skew Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
+df["eSSVI Skew Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
 
 # Create Gourion-Lucic Skew Bounds Arbitrability Surface (SVI)
 df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["SVI Skew GL"]]
+    df_mat = df_mat[["SVI Skew Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
 df_svi_skew_arb_surface = pd.concat(df_list, axis=1)
@@ -495,7 +498,7 @@ df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["SSVI Skew GL"]]
+    df_mat = df_mat[["SSVI Skew Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
 df_ssvi_skew_arb_surface = pd.concat(df_list, axis=1)
@@ -506,22 +509,22 @@ df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["eSSVI Skew GL"]]
+    df_mat = df_mat[["eSSVI Skew Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
 df_essvi_skew_arb_surface = pd.concat(df_list, axis=1)
 df_essvi_skew_arb_surface.sort_index(inplace=True)
 
-# Compute SVI, SSVI, eSSVI Gourion-Lucic Skew & Convexity Bounds Test
-df["SVI Skew+Convexity GL"] = df.apply(
-    lambda x: 1 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["s_conv_min SVI"] < x["SVI Convexity"] else 0, axis=1)
+# Compute SVI, SSVI & eSSVI Gourion-Lucic Skew & Convexity Bounds Test
+df["SVI Skew+Convexity Test"] = df.apply(
+    lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["s_conv_min SVI"] < x["SVI Convexity"] else 1, axis=1)
 
 # Create Gourion-Lucic Skew & Convexity Bounds Arbitrability Surface (SVI)
 df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["SVI Skew+Convexity GL"]]
+    df_mat = df_mat[["SVI Skew+Convexity Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
 df_svi_skew_conv_arb_surface = pd.concat(df_list, axis=1)
@@ -533,21 +536,87 @@ print(f"{timer_id}/ Gourion-Lucic Arbitrability Bounds Test Concluded ({round(en
 start = end
 timer_id = timer_id + 1
 
-# Compute SVI, SSVI, eSSVI Binary European Up & In (BEUI) Price
+# Compute SVI, SSVI & eSSVI Binary European Up & In (BEUI) Price
 df["SVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SVI Skew"]), axis=1)
 df["SSVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SSVI Skew"]), axis=1)
 df["eSSVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["eSSVI Skew"]), axis=1)
 
-# Compute SVI, SSVI, eSSVI Binary European Down & In (BEDI) Price
-df["SVI BEDI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SVI Skew"]), axis=1)
-df["SSVI BEDI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SSVI Skew"]), axis=1)
-df["eSSVI BEDI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["eSSVI Skew"]), axis=1)
+# Compute SVI, SSVI & eSSVI Binary European Down & In (BEDI) Price
+df["SVI BEDI"] = df.apply(lambda x: 1 - x["SVI BEUI"], axis=1)
+df["SSVI BEDI"] = df.apply(lambda x: 1 - x["SSVI BEUI"], axis=1)
+df["eSSVI BEDI"] = df.apply(lambda x: 1 - x["eSSVI BEUI"], axis=1)
 
-# Compute SVI, SSVI, eSSVI Call Triangles
+# Compute SVI, SSVI & eSSVI Shark-Jaw Test
+for maturity in df["Maturity"].unique():
+    # Type Condition
+    call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
+    put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
+    # Call Triangles (CT)
+    df_bis = df[call_cond].copy()
+    df.loc[call_cond, ['SVI SJ CT']] = df_bis["Mid"].shift(1) - df_bis["Mid"] - (
+                df_bis["Strike"].shift(1) - df_bis["Strike"]) * df_bis["SVI BEDI"]
+    df.loc[call_cond, ['SSVI SJ CT']] = df_bis["Mid"].shift(1) - df_bis["Mid"] - (
+                df_bis["Strike"].shift(1) - df_bis["Strike"]) * df_bis["SSVI BEDI"]
+    df.loc[call_cond, ['eSSVI SJ CT']] = df_bis["Mid"].shift(1) - df_bis["Mid"] - (
+                df_bis["Strike"].shift(1) - df_bis["Strike"]) * df_bis["eSSVI BEDI"]
+    # Put Triangles (PT)
+    df_bis = df[put_cond].copy()
+    df.loc[put_cond, ['SVI SJ PT']] = df_bis["Mid"].shift(-1) - df_bis["Mid"] - (
+                df_bis["Strike"] - df_bis["Strike"].shift(-1)) * df_bis["SVI BEDI"]
+    df.loc[put_cond, ['SSVI SJ PT']] = df_bis["Mid"].shift(-1) - df_bis["Mid"] - (
+                df_bis["Strike"] - df_bis["Strike"].shift(-1)) * df_bis["SSVI BEDI"]
+    df.loc[put_cond, ['eSSVI SJ PT']] = df_bis["Mid"].shift(-1) - df_bis["Mid"] - (
+                df_bis["Strike"] - df_bis["Strike"].shift(-1)) * df_bis["eSSVI BEDI"]
 
-# Compute SVI, SSVI, eSSVI Put Triangles
+# Compute SVI, SSVI & eSSVI Shark-Jaw Test
+df["SVI SJ Test"] = df.apply(lambda x: 0
+    if (x["SVI SJ CT"] > 0 and x["SVI SJ PT"] > 0) else 0
+        if (pd.isna(x["SVI SJ CT"]) and x["SVI SJ PT"] > 0) else 0
+            if (x["SVI SJ CT"] > 0 and pd.isna(x["SVI SJ PT"])) else 0
+                if (pd.isna(x["SVI SJ CT"]) and pd.isna(x["SVI SJ PT"])) else 1, axis=1)
+df["SSVI SJ Test"] = df.apply(lambda x: 0
+    if (x["SSVI SJ CT"] > 0 and x["SSVI SJ PT"] > 0) else 0
+        if (pd.isna(x["SSVI SJ CT"]) and x["SSVI SJ PT"] > 0) else 0
+            if (x["SSVI SJ CT"] > 0 and pd.isna(x["SSVI SJ PT"])) else 0
+                if (pd.isna(x["SSVI SJ CT"]) and pd.isna(x["SSVI SJ PT"])) else 1, axis=1)
+df["eSSVI SJ Test"] = df.apply(lambda x: 0
+    if (x["eSSVI SJ CT"] > 0 and x["eSSVI SJ PT"] > 0) else 0
+        if (pd.isna(x["eSSVI SJ CT"]) and x["eSSVI SJ PT"] > 0) else 0
+            if (x["eSSVI SJ CT"] > 0 and pd.isna(x["eSSVI SJ PT"])) else 0
+                if (pd.isna(x["eSSVI SJ CT"]) and pd.isna(x["eSSVI SJ PT"])) else 1, axis=1)
 
-# Compute SVI, SSVI, eSSVI Shark-Jaw Test
+# Create Shark-Jaw Arbitrability Surface (SVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SVI SJ Test"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_svi_sj_arb_surface = pd.concat(df_list, axis=1)
+df_svi_sj_arb_surface.sort_index(inplace=True)
+
+# Create Shark-Jaw Arbitrability Surface (SSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SSVI SJ Test"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_ssvi_sj_arb_surface = pd.concat(df_list, axis=1)
+df_ssvi_sj_arb_surface.sort_index(inplace=True)
+
+# Create Shark-Jaw Arbitrability Surface (eSSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["eSSVI SJ Test"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_essvi_sj_arb_surface = pd.concat(df_list, axis=1)
+df_essvi_sj_arb_surface.sort_index(inplace=True)
 
 # Timer
 end = time.perf_counter()
@@ -555,10 +624,8 @@ print(f"{timer_id}/ Gourion Shark-Jaw Test Concluded ({round(end - start, 1)}s)"
 start = end
 timer_id = timer_id + 1
 
-# Reorder Dataframe
-df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
-
 # Set Graphs Infos
+plt.tight_layout()
 fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig3, axs3 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
@@ -567,8 +634,9 @@ fig1.suptitle(f"Market Data Coherence Verification ({spot_date.strftime('%d-%b-%
               fontsize=12.5)
 fig2.suptitle(f"Parametric Volatilities Calibration ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold',
               fontsize=12.5)
-fig3.suptitle(f"Volatility Calibration Errors ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold', fontsize=12.5)
-fig4.suptitle(f"Arbitrability Gourion-Lucic Bounds Tests ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold',
+fig3.suptitle(f"Volatility Calibration Errors ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold',
+              fontsize=12.5)
+fig4.suptitle(f"Arbitograms ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold',
               fontsize=12.5)
 
 # Plot Number of Options Per Steps
@@ -751,11 +819,11 @@ axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
 
 # Plot Volatility Calibration Error Surfaces
 g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, annot=True,
-                 vmin=0, vmax=25)
+                 vmin=0, vmax=20)
 g2 = sns.heatmap(df_ssvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 1], cbar=False, annot=True,
-                 vmin=0, vmax=25)
+                 vmin=0, vmax=20)
 g3 = sns.heatmap(df_essvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 2], annot=True, vmin=0,
-                 vmax=25)
+                 vmax=20)
 for g, ax, name in zip([g1, g2, g3], [axs3[0, 0], axs3[0, 1], axs3[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} Vol. Error (in %)", fontsize=title_font_size)
@@ -782,24 +850,28 @@ for g, ax, name in zip([g1, g2, g3], [axs3[1, 0], axs3[1, 1], axs3[1, 2]], ["SVI
 # Plot Skew Arbitrability Surfaces (of most liquid strikes)
 g1 = sns.heatmap(df_svi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 0], cbar=False, vmin=-1, vmax=1,
                  annot=True)
-g2 = sns.heatmap(df_ssvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, vmin=-1,
-                 vmax=1, annot=True)
+g2 = sns.heatmap(df_ssvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, vmin=-1, vmax=1,
+                 annot=True)
 g3 = sns.heatmap(df_essvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], vmin=-1, vmax=1,
                  annot=True)
 for g, ax, name in zip([g1, g2, g3], [axs4[0, 0], axs4[0, 1], axs4[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Skew", fontsize=title_font_size)
+    ax.set_title(f"{name} Gourion-Lucic Bounds", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Skew+Convexity Arbitrability Surfaces (of most liquid strikes)
-g1 = sns.heatmap(df_svi_skew_conv_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 0], cbar=False, vmin=-1,
-                 vmax=1, annot=True)
-for g, ax, name in zip([g1], [axs4[1, 0]], ["SVI"]):
+# Plot Shark-Jaw Arbitrability Surfaces (of most liquid strikes)
+g1 = sns.heatmap(df_svi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 0], cbar=False, vmin=-1, vmax=1,
+                 annot=True)
+g2 = sns.heatmap(df_ssvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 1], cbar=False, vmin=-1, vmax=1,
+                 annot=True)
+g3 = sns.heatmap(df_essvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 2], vmin=-1, vmax=1,
+                 annot=True)
+for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Skew + Convexity", fontsize=title_font_size)
+    ax.set_title(f"{name} Shark-Jaw", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
@@ -815,14 +887,10 @@ with pd.ExcelWriter("results/Results.xlsx") as writer:
     fig1.savefig('results/Market Data Coherence Verification.png')
     fig2.savefig('results/Parametric Volatilities Calibration.png')
     fig3.savefig('results/Volatility Calibration Errors.png')
-    fig4.savefig('results/Arbitrability Gourion-Lucic Bounds Tests.png')
+    fig4.savefig('results/Arbitograms.png')
 
 # Timer
 end = time.perf_counter()
 print(f"{timer_id}/ Results Exported + Graphs Built ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
-
-# Show All Graphs
-plt.tight_layout()
-plt.show()
