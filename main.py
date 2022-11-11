@@ -474,7 +474,7 @@ df["s_conv_min SVI"] = df.apply(
               (1 / (x["Strike"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["SVI Skew"]) - (1 / x["Strike"]) *
               x["SVI Skew"], axis=1)
 
-# Compute Gourion-Lucic Skew Bounds Test
+# Compute SVI, SSVI, eSSVI Gourion-Lucic Skew Bounds Test
 df["SVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 0, axis=1)
 df["SSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 0, axis=1)
 df["eSSVI Skew GL"] = df.apply(lambda x: 1 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 0, axis=1)
@@ -512,7 +512,7 @@ for maturity in df["Maturity"].unique():
 df_essvi_skew_arb_surface = pd.concat(df_list, axis=1)
 df_essvi_skew_arb_surface.sort_index(inplace=True)
 
-# Compute Gourion-Lucic Skew & Convexity Bounds Test
+# Compute SVI, SSVI, eSSVI Gourion-Lucic Skew & Convexity Bounds Test
 df["SVI Skew+Convexity GL"] = df.apply(
     lambda x: 1 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["s_conv_min SVI"] < x["SVI Convexity"] else 0, axis=1)
 
@@ -530,6 +530,28 @@ df_svi_skew_conv_arb_surface.sort_index(inplace=True)
 # Timer
 end = time.perf_counter()
 print(f"{timer_id}/ Gourion-Lucic Arbitrability Bounds Test Concluded ({round(end - start, 1)}s)")
+start = end
+timer_id = timer_id + 1
+
+# Compute SVI, SSVI, eSSVI Binary European Up & In (BEUI) Price
+df["SVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SVI Skew"]), axis=1)
+df["SSVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SSVI Skew"]), axis=1)
+df["eSSVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["eSSVI Skew"]), axis=1)
+
+# Compute SVI, SSVI, eSSVI Binary European Down & In (BEDI) Price
+df["SVI BEDI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SVI Skew"]), axis=1)
+df["SSVI BEDI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SSVI Skew"]), axis=1)
+df["eSSVI BEDI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["eSSVI Skew"]), axis=1)
+
+# Compute SVI, SSVI, eSSVI Call Triangles
+
+# Compute SVI, SSVI, eSSVI Put Triangles
+
+# Compute SVI, SSVI, eSSVI Shark-Jaw Test
+
+# Timer
+end = time.perf_counter()
+print(f"{timer_id}/ Gourion Shark-Jaw Test Concluded ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -790,6 +812,10 @@ if not os.path.exists('results'):
 # Export Dataframes
 with pd.ExcelWriter("results/Results.xlsx") as writer:
     df.to_excel(writer, sheet_name="Dataframe")
+    fig1.savefig('results/Market Data Coherence Verification.png')
+    fig2.savefig('results/Parametric Volatilities Calibration.png')
+    fig3.savefig('results/Volatility Calibration Errors.png')
+    fig4.savefig('results/Arbitrability Gourion-Lucic Bounds Tests.png')
 
 # Timer
 end = time.perf_counter()
