@@ -142,4 +142,7 @@ Temporary Items
 
 
 ### Custom Rule
+results
 results/
+results/*
+results/**
