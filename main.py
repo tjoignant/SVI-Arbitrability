@@ -455,21 +455,30 @@ df["d2"] = df.apply(
 df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
 
 # Compute Gourion-Lucic Skew Bounds
-df["Mid Forward Adj."] = df["Mid"] / df["Forward"]
 for maturity in df["Maturity"].unique():
-    for type in df["Type"].unique():
-        # Filter Condition
-        cond = (df["Maturity"] == maturity) & (df["Type"] == type)
-        # S_min
-        df_bis = df[cond].copy()
-        df.loc[cond, ['s_min']] = ((df_bis["Mid"] - df_bis["Mid"].shift(1)) / (
-                df_bis["Strike"] - df_bis["Strike"].shift(1)) - df_bis["Delta Strike"]) / df_bis["Vega"]
-        df.loc[df[cond].index[0], "s_min"] = ((df_bis["Mid"].values[0] - df_bis["Spot"].values[0]) / (
-            df_bis["Strike"].values[0]) - df_bis["Delta Strike"].values[0]) / df_bis["Vega"].values[0]
-        # S_max
-        df.loc[cond, ['s_max']] = ((df_bis["Mid"].shift(-1) - df_bis["Mid"]) / (
-                df_bis["Strike"].shift(-1) - df_bis["Strike"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
-        df.loc[df[cond].index[-1], "s_max"] = - df_bis["Delta Strike"].values[-1] / df_bis["Vega"].values[-1]
+    # Types Condition
+    call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
+    put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
+    # S_min (call)
+    df_bis = df[call_cond].copy()
+    df.loc[call_cond, ['s_min']] = ((df_bis["Mid"] - df_bis["Mid"].shift(1)) / (
+            df_bis["Strike"] - df_bis["Strike"].shift(1)) - df_bis["Delta Strike"]) / df_bis["Vega"]
+    df.loc[df[call_cond].index[0], "s_min"] = ((df_bis["Mid"].values[0] - df_bis["Spot"].values[0]) / (
+        df_bis["Strike"].values[0]) - df_bis["Delta Strike"].values[0]) / df_bis["Vega"].values[0]
+    # S_max (call)
+    df.loc[call_cond, ['s_max']] = ((df_bis["Mid"].shift(-1) - df_bis["Mid"]) / (
+            df_bis["Strike"].shift(-1) - df_bis["Strike"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
+    df.loc[df[call_cond].index[-1], "s_max"] = - df_bis["Delta Strike"].values[-1] / df_bis["Vega"].values[-1]
+    # S_min (put)
+    df_bis = df[put_cond].copy()
+    df.loc[put_cond, ['s_min']] = ((df_bis["Mid"] - df_bis["Mid"].shift(1)) / (
+            df_bis["Strike"] - df_bis["Strike"].shift(1)) - df_bis["Delta Strike"]) / df_bis["Vega"]
+    df.loc[df[put_cond].index[0], "s_min"] = - df_bis["Delta Strike"].values[0] / df_bis["Vega"].values[0]
+    # S_max (put)
+    df.loc[put_cond, ['s_max']] = ((df_bis["Mid"].shift(-1) - df_bis["Mid"]) / (
+            df_bis["Strike"].shift(-1) - df_bis["Strike"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
+    df.loc[df[put_cond].index[-1], "s_max"] = ((df_bis["Spot"].values[-1] - df_bis["Mid"].values[-1]) / (
+        df_bis["Strike"].values[-1]) - df_bis["Delta Strike"].values[-1]) / df_bis["Vega"].values[-1]
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Convexity Bounds
 df["s_conv_min SVI"] = df.apply(
