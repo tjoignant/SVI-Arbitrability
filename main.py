@@ -13,16 +13,17 @@ from sklearn.linear_model import LinearRegression
 import calibration
 import black_scholes
 
-# Initialisation
+# Variables Initialisation
 start = time.perf_counter()
 spot = 3375.46
 spot_date = dt.datetime(day=7, month=10, year=2022)
 min_volume = 10
-strike_list = [2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000]
+strike_list = [2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100]
 nb_options = []
 nb_options_text = []
 tick_font_size = 8.5
 title_font_size = 11
+use_convexity_bounds = False
 timer_id = 1
 legend_loc = "upper right"
 color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
@@ -459,6 +460,19 @@ for maturity in df["Maturity"].unique():
                                                                                                      sigma_=SVI_params[
                                                                                                          "sigma_"]),
                                                                                                  axis=1)
+df["SSVI Convexity"] = df.apply(lambda x:
+                           calibration.SSVI_convexity(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
+                                                 maturity=x["Maturity (in Y)"],
+                                                 forward=x["Forward Perc"], rho_=SSVI_params["rho_"],
+                                                 eta_=SSVI_params["eta_"],
+                                                 lambda_=SSVI_params["lambda_"]), axis=1)
+df["eSSVI Convexity"] = df.apply(lambda x:
+                            calibration.eSSVI_convexity(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
+                                                   maturity=x["Maturity (in Y)"],
+                                                   forward=x["Forward Perc"], eta_=eSSVI_params["eta_"],
+                                                   lambda_=eSSVI_params["lambda_"],
+                                                   a_=eSSVI_params["a_"], b_=eSSVI_params["b_"],
+                                                   c_=eSSVI_params["c_"], ), axis=1)
 
 # Compute Gourion-Lucic Skew Bounds
 for maturity in df["Maturity"].unique():
@@ -491,59 +505,60 @@ df["s_conv_min SVI"] = df.apply(
     lambda x: -(1 / x["SVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["SVI Skew"]) *
               (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["SVI Skew"]) - (1 / x["Strike Perc"]) *
               x["SVI Skew"], axis=1)
+df["s_conv_min SSVI"] = df.apply(
+    lambda x: -(1 / x["SSVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["SSVI Skew"]) *
+              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["SSVI Skew"]) - (1 / x["Strike Perc"]) *
+              x["SSVI Skew"], axis=1)
+df["s_conv_min eSSVI"] = df.apply(
+    lambda x: -(1 / x["eSSVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["eSSVI Skew"]) *
+              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["eSSVI Skew"]) - (1 / x["Strike Perc"]) *
+              x["eSSVI Skew"], axis=1)
 
-# Compute SVI, SSVI & eSSVI Gourion-Lucic Skew Bounds Test
-df["SVI Skew Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
-df["SSVI Skew Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
-df["eSSVI Skew Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
+# Compute SVI, SSVI & eSSVI Gourion-Lucic Bounds Test
+if not use_convexity_bounds:
+    df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
+    df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
+    df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
+else:
+    df["SVI GL Bounds Test"] = df.apply(
+        lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["s_conv_min SVI"] < x["SVI Convexity"] else 1, axis=1)
+    df["SSVI GL Bounds Test"] = df.apply(
+        lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] and x["s_conv_min SSVI"] < x["SSVI Convexity"] else 1, axis=1)
+    df["eSSVI GL Bounds Test"] = df.apply(
+        lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] and x["s_conv_min eSSVI"] < x["eSSVI Convexity"] else 1, axis=1)
 
 # Create Gourion-Lucic Skew Bounds Arbitrability Surface (SVI)
 df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["SVI Skew Test"]]
+    df_mat = df_mat[["SVI GL Bounds Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_svi_skew_arb_surface = pd.concat(df_list, axis=1)
-df_svi_skew_arb_surface.sort_index(inplace=True)
+df_svi_bounds_arb_surface = pd.concat(df_list, axis=1)
+df_svi_bounds_arb_surface.sort_index(inplace=True)
 
 # Create Gourion-Lucic Skew Bounds Arbitrability Surface (SSVI)
 df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["SSVI Skew Test"]]
+    df_mat = df_mat[["SSVI GL Bounds Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_ssvi_skew_arb_surface = pd.concat(df_list, axis=1)
-df_ssvi_skew_arb_surface.sort_index(inplace=True)
+df_ssvi_bounds_arb_surface = pd.concat(df_list, axis=1)
+df_ssvi_bounds_arb_surface.sort_index(inplace=True)
 
 # Create Gourion-Lucic Skew Bounds Arbitrability Surface (eSSVI)
 df_list = []
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
     df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["eSSVI Skew Test"]]
+    df_mat = df_mat[["eSSVI GL Bounds Test"]]
     df_mat.columns = [maturity]
     df_list.append(df_mat)
-df_essvi_skew_arb_surface = pd.concat(df_list, axis=1)
-df_essvi_skew_arb_surface.sort_index(inplace=True)
-
-# Compute SVI, SSVI & eSSVI Gourion-Lucic Skew & Convexity Bounds Test
-df["SVI Skew+Convexity Test"] = df.apply(
-    lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["s_conv_min SVI"] < x["SVI Convexity"] else 1, axis=1)
-
-# Create Gourion-Lucic Skew & Convexity Bounds Arbitrability Surface (SVI)
-df_list = []
-for maturity in df["Maturity"].unique():
-    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
-    df_mat.index = df_mat["Strike"]
-    df_mat = df_mat[["SVI Skew+Convexity Test"]]
-    df_mat.columns = [maturity]
-    df_list.append(df_mat)
-df_svi_skew_conv_arb_surface = pd.concat(df_list, axis=1)
-df_svi_skew_conv_arb_surface.sort_index(inplace=True)
+df_essvi_bounds_arb_surface = pd.concat(df_list, axis=1)
+df_essvi_bounds_arb_surface.sort_index(inplace=True)
 
 # Timer
 end = time.perf_counter()
@@ -864,11 +879,11 @@ for g, ax, name in zip([g1, g2, g3], [axs3[1, 0], axs3[1, 1], axs3[1, 2]], ["SVI
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
 # Plot Skew Arbitrability Surfaces (of most liquid strikes)
-g1 = sns.heatmap(df_svi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 0], cbar=False, vmin=-1, vmax=1,
+g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 0], cbar=False, vmin=-1, vmax=1,
                  annot=True)
-g2 = sns.heatmap(df_ssvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, vmin=-1, vmax=1,
+g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, vmin=-1, vmax=1,
                  annot=True)
-g3 = sns.heatmap(df_essvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], cbar=False, vmin=-1, vmax=1,
+g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], cbar=False, vmin=-1, vmax=1,
                  annot=True)
 for g, ax, name in zip([g1, g2, g3], [axs4[0, 0], axs4[0, 1], axs4[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
@@ -913,9 +928,9 @@ timer_id = timer_id + 1
 
 # Display Absolute Calibration Arbitrability (ACA) Scores
 print("\nACA Scores:")
-print(f" - SVI : {round((1 - df['SVI Skew Test'].mean()) * 10, 2)}")
-print(f" - SSVI : {round((1 - df['SSVI Skew Test'].mean()) * 10, 2)}")
-print(f" - eSSVI : {round((1 - df['eSSVI Skew Test'].mean()) * 10, 2)}")
+print(f" - SVI : {round((1 - df['SVI GL Bounds Test'].mean()) * 10, 2)}")
+print(f" - SSVI : {round((1 - df['SSVI GL Bounds Test'].mean()) * 10, 2)}")
+print(f" - eSSVI : {round((1 - df['eSSVI GL Bounds Test'].mean()) * 10, 2)}")
 
 # Display Graph
 plt.show()
