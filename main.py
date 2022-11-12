@@ -232,13 +232,30 @@ timer_id = timer_id + 1
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / x["Forward"]), axis=1)
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
+# Compute BS Delta Strike, Vega, d1 & d2
+df["Delta Strike"] = df.apply(
+    lambda x: black_scholes.BS_Delta_Strike(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                            v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+df["Vega"] = df.apply(
+    lambda x: black_scholes.BS_Vega(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                    v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
+df["d1"] = df.apply(
+    lambda x: black_scholes.BS_d1(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["Implied Vol"]), axis=1)
+df["d2"] = df.apply(
+    lambda x: black_scholes.BS_d2(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["Implied Vol"]), axis=1)
+
+# Set Minimisation Weight Column
+weights_col = "Implied Vol"
+
 # Calibrate SVI Curves
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = calibration.SVI_calibration(
         k_list=list(df_mat["Log Forward Moneyness"]),
         mktTotVar_list=list(df_mat["Implied TV"]),
-        weights_list=list(df_mat["Implied Vol"]),
+        weights_list=list(df_mat[weights_col]),
     )
     df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
     df.loc[df["Maturity"] == maturity, ['ATMF Implied TV']] = \
@@ -250,7 +267,7 @@ SSVI_params = calibration.SSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
     atmfTotVar_list=list(df["ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
-    weights_list=list(df["Implied Vol"]),
+    weights_list=list(df[weights_col]),
 )
 
 # Calibrate eSSVI Surface
@@ -258,7 +275,7 @@ eSSVI_params = calibration.eSSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
     atmfTotVar_list=list(df["ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
-    weights_list=list(df["Implied Vol"]),
+    weights_list=list(df[weights_col]),
 )
 
 # Timer
@@ -436,20 +453,6 @@ for maturity in df["Maturity"].unique():
                                                                                                      sigma_=SVI_params[
                                                                                                          "sigma_"]),
                                                                                                  axis=1)
-
-# Compute BS Delta Strike, Vega, d1 & d2
-df["Delta Strike"] = df.apply(
-    lambda x: black_scholes.BS_Delta_Strike(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                            v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
-df["Vega"] = df.apply(
-    lambda x: black_scholes.BS_Vega(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                    v=x["Implied Vol"], df=x["ZC"], OptType=x["Type"][0]), axis=1)
-df["d1"] = df.apply(
-    lambda x: black_scholes.BS_d1(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                  v=x["Implied Vol"]), axis=1)
-df["d2"] = df.apply(
-    lambda x: black_scholes.BS_d2(f=x["Forward"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                  v=x["Implied Vol"]), axis=1)
 
 # Reorder Dataframe
 df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
@@ -634,7 +637,6 @@ start = end
 timer_id = timer_id + 1
 
 # Set Graphs Infos
-plt.tight_layout()
 fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig3, axs3 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
@@ -647,6 +649,9 @@ fig3.suptitle(f"Volatility Calibration Errors ({spot_date.strftime('%d-%b-%Y')})
               fontsize=12.5)
 fig4.suptitle(f"Arbitograms ({spot_date.strftime('%d-%b-%Y')})", fontweight='bold',
               fontsize=12.5)
+
+# Set Fig Graph Layout
+plt.tight_layout()
 
 # Plot Number of Options Per Steps
 nb_options_text.append("Calibration")
@@ -861,7 +866,7 @@ g1 = sns.heatmap(df_svi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=
                  annot=True)
 g2 = sns.heatmap(df_ssvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, vmin=-1, vmax=1,
                  annot=True)
-g3 = sns.heatmap(df_essvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], vmin=-1, vmax=1,
+g3 = sns.heatmap(df_essvi_skew_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], cbar=False, vmin=-1, vmax=1,
                  annot=True)
 for g, ax, name in zip([g1, g2, g3], [axs4[0, 0], axs4[0, 1], axs4[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
@@ -876,7 +881,7 @@ g1 = sns.heatmap(df_svi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=ax
                  annot=True)
 g2 = sns.heatmap(df_ssvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 1], cbar=False, vmin=-1, vmax=1,
                  annot=True)
-g3 = sns.heatmap(df_essvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 2], vmin=-1, vmax=1,
+g3 = sns.heatmap(df_essvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 2], cbar=False, vmin=-1, vmax=1,
                  annot=True)
 for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
