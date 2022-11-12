@@ -249,7 +249,7 @@ df["d2"] = df.apply(
 # Set Minimisation Weight Column
 weights_col = "Implied Vol"
 
-# Calibrate SVI Curves
+# Calibrate SVI Curves + Compute SVI ATMF Implied TV
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = calibration.SVI_calibration(
@@ -258,14 +258,14 @@ for maturity in df["Maturity"].unique():
         weights_list=list(df_mat[weights_col]),
     )
     df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
-    df.loc[df["Maturity"] == maturity, ['ATMF Implied TV']] = \
+    df.loc[df["Maturity"] == maturity, ['SVI ATMF Implied TV']] = \
         calibration.SVI(k=0, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                         m_=SVI_params["m_"], sigma_=SVI_params["sigma_"])
 
 # Calibrate SSVI Surface
 SSVI_params = calibration.SSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
-    atmfTotVar_list=list(df["ATMF Implied TV"]),
+    atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df[weights_col]),
 )
@@ -273,7 +273,7 @@ SSVI_params = calibration.SSVI_calibration(
 # Calibrate eSSVI Surface
 eSSVI_params = calibration.eSSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
-    atmfTotVar_list=list(df["ATMF Implied TV"]),
+    atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df[weights_col]),
 )
@@ -295,11 +295,11 @@ for maturity in df["Maturity"].unique():
                                                              rho_=SVI_params["rho_"], m_=SVI_params["m_"],
                                                              sigma_=SVI_params["sigma_"]), axis=1)
 df["SSVI TV"] = df.apply(lambda x:
-                         calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"],
+                         calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
                                           rho_=SSVI_params["rho_"],
                                           eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]), axis=1)
 df["eSSVI TV"] = df.apply(lambda x:
-                          calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"],
+                          calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
                                             a_=eSSVI_params["a_"],
                                             b_=eSSVI_params["b_"], c_=eSSVI_params["c_"], eta_=eSSVI_params["eta_"],
                                             lambda_=eSSVI_params["lambda_"]), axis=1)
@@ -406,8 +406,8 @@ for maturity in df["Maturity"].unique():
     SVI_params = list(df_mat["SVI Params"])[0]
     df.loc[df["Maturity"] == maturity, ['SVI Skew']] = df[df["Maturity"] == maturity].apply(lambda x:
                                                                                             calibration.SVI_skew(
-                                                                                                strike=x["Strike Perc"],
-                                                                                                forward=x["Forward"],
+                                                                                                strike=x["Strike"],
+                                                                                                forward=x["Forward"]*x["Spot"],
                                                                                                 maturity=x[
                                                                                                     "Maturity (in Y)"],
                                                                                                 a_=SVI_params["a_"],
@@ -417,15 +417,15 @@ for maturity in df["Maturity"].unique():
                                                                                                 sigma_=SVI_params[
                                                                                                     "sigma_"]), axis=1)
 df["SSVI Skew"] = df.apply(lambda x:
-                           calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"],
+                           calibration.SSVI_skew(strike=x["Strike"], theta=x["SVI ATMF Implied TV"],
                                                  maturity=x["Maturity (in Y)"],
-                                                 forward=x["Forward"], rho_=SSVI_params["rho_"],
+                                                 forward=x["Forward"]*x["Spot"], rho_=SSVI_params["rho_"],
                                                  eta_=SSVI_params["eta_"],
                                                  lambda_=SSVI_params["lambda_"]), axis=1)
 df["eSSVI Skew"] = df.apply(lambda x:
-                            calibration.eSSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"],
+                            calibration.eSSVI_skew(strike=x["Strike"], theta=x["SVI ATMF Implied TV"],
                                                    maturity=x["Maturity (in Y)"],
-                                                   forward=x["Forward"], eta_=eSSVI_params["eta_"],
+                                                   forward=x["Forward"]*x["Spot"], eta_=eSSVI_params["eta_"],
                                                    lambda_=eSSVI_params["lambda_"],
                                                    a_=eSSVI_params["a_"], b_=eSSVI_params["b_"],
                                                    c_=eSSVI_params["c_"], ), axis=1)
@@ -437,9 +437,9 @@ for maturity in df["Maturity"].unique():
     df.loc[df["Maturity"] == maturity, ['SVI Convexity']] = df[df["Maturity"] == maturity].apply(lambda x:
                                                                                                  calibration.SVI_convexity(
                                                                                                      strike=x[
-                                                                                                         "Strike Perc"],
+                                                                                                         "Strike"],
                                                                                                      forward=x[
-                                                                                                         "Forward"],
+                                                                                                         "Forward"]*x["Spot"],
                                                                                                      maturity=x[
                                                                                                          "Maturity (in Y)"],
                                                                                                      a_=SVI_params[
@@ -751,7 +751,7 @@ axs2[0, 0].set_title("SVI Calibration", fontsize=title_font_size)
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["ATMF Implied TV"])[0]
+    theta = list(df_bis["SVI ATMF Implied TV"])[0]
     ssvi_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
                                   lambda_=SSVI_params["lambda_"]) for k in k_list]
     axs2[0, 1].plot(k_list, ssvi_list, label=list(df_bis["Pretty Maturity"])[0])
@@ -765,7 +765,7 @@ axs2[0, 1].set_title("SSVI Calibration", fontsize=title_font_size)
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["ATMF Implied TV"])[0]
+    theta = list(df_bis["SVI ATMF Implied TV"])[0]
     essvi_list = [
         calibration.eSSVI(k=k, theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                           eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
@@ -805,7 +805,7 @@ ssvi_phi = []
 essvi_phi = []
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["ATMF Implied TV"])[0]
+    theta = list(df_bis["SVI ATMF Implied TV"])[0]
     ssvi_phi.append(calibration.SSVI_phi(theta=theta, eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]))
     essvi_phi.append(calibration.eSSVI_phi(theta=theta, eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]))
 axs2[1, 1].plot(df["Pretty Maturity"].unique(), ssvi_phi, label="SSVI")
@@ -820,7 +820,7 @@ ssvi_rho = []
 essvi_rho = []
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["ATMF Implied TV"])[0]
+    theta = list(df_bis["SVI ATMF Implied TV"])[0]
     ssvi_rho.append(SSVI_params["rho_"])
     essvi_rho.append(
         calibration.eSSVI_rho(theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"]))
@@ -833,11 +833,11 @@ axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
 
 # Plot Volatility Calibration Error Surfaces
 g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, annot=True,
-                 vmin=0, vmax=20)
+                 vmin=0, vmax=10)
 g2 = sns.heatmap(df_ssvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 1], cbar=False, annot=True,
-                 vmin=0, vmax=20)
+                 vmin=0, vmax=10)
 g3 = sns.heatmap(df_essvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 2], annot=True, vmin=0,
-                 vmax=20)
+                 vmax=10)
 for g, ax, name in zip([g1, g2, g3], [axs3[0, 0], axs3[0, 1], axs3[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} Vol. Error (in %)", fontsize=title_font_size)
@@ -848,11 +848,11 @@ for g, ax, name in zip([g1, g2, g3], [axs3[0, 0], axs3[0, 1], axs3[0, 2]], ["SVI
 
 # Plot Price Calibration Error Surfaces
 g1 = sns.heatmap(df_svi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 0], cbar=False, annot=True,
-                 vmin=0, vmax=1)
+                 vmin=0, vmax=0.25)
 g2 = sns.heatmap(df_ssvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 1], cbar=False, annot=True,
-                 vmin=0, vmax=1)
+                 vmin=0, vmax=0.25)
 g3 = sns.heatmap(df_essvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 2], annot=True, vmin=0,
-                 vmax=1)
+                 vmax=0.25)
 for g, ax, name in zip([g1, g2, g3], [axs3[1, 0], axs3[1, 1], axs3[1, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} Price Error (in %)", fontsize=title_font_size)

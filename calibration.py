@@ -18,10 +18,10 @@ def SVI(k: float, a_: float, b_: float, rho_: float, m_: float, sigma_: float):
 
 def SVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
     """
-    :param params_list: parameters list : [a_, b_, rho_, m_, sigma_]
-    :param inputs_list: inputs list : [(k_1), (k_2), (k_3), ...]
-    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
-    :param weights_list: weights list : [w_1, w_2, w_3, ...]
+    :param params_list: [a_, b_, rho_, m_, sigma_]
+    :param inputs_list: [(k_1), (k_2), (k_3), ...]
+    :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
     :return: mean squared volatility error (MSVE)
     """
     MSVE = 0
@@ -34,18 +34,19 @@ def SVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_li
 
 def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list):
     """
-    :param k_list: inputs list : [k_1, k_2, k_3, ...]
-    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
-    :param weights_list: weights list : [w_1, w_2, w_3, ...]
-    :return: calibrated parameters list
+    :param k_list: [k_1, k_2, k_3, ...]
+    :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :return: calibrated parameters dict : {a_, b_, rho_, m_, sigma_}
     """
-    init_params_list = [0.01, 0.30, 0, 0, 0.01]
+    init_params_list = [0, 0.2, 0, 0, 0.2]
     inputs_list = [(k,) for k in k_list]
     result = optimize.minimize(
         SVI_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktTotVar_list, weights_list)
+        args=(inputs_list, mktTotVar_list, weights_list),
+        tol=1e-6,
     )
     final_params = list(result.x)
     return {
@@ -58,6 +59,17 @@ def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list):
 
 
 def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: float, rho_: float, m_: float, sigma_: float):
+    """
+    :param strike: strike
+    :param forward: forward
+    :param maturity: maturity
+    :param a_: SVI curve parameter
+    :param b_: SVI curve parameter
+    :param rho_: SVI curve parameter
+    :param m_: SVI curve parameter
+    :param sigma_: SVI curve parameter
+    :return: SVI skew
+    """
     num = b_ * ((np.log(strike/forward) - m_) / (np.sqrt(pow(np.log(strike/forward) - m_, 2) + pow(sigma_, 2))) + rho_)
     den = 2 * maturity * strike * np.sqrt((a_ + b_ * (np.sqrt(pow(np.log(strike/forward) - m_, 2) + pow(sigma_, 2)) + rho_ * np.log(strike/forward) - m_ * rho_)) / maturity)
     return num / den
@@ -65,12 +77,21 @@ def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: floa
 
 def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_: float, rho_: float, m_: float,
                   sigma_: float):
-    num1 = pow(np.log(strike / forward) - m_, 2)
-    num1 = -num1
+    """
+    :param strike: strike
+    :param forward: forward
+    :param maturity: maturity
+    :param a_: SVI curve parameter
+    :param b_: SVI curve parameter
+    :param rho_: SVI curve parameter
+    :param m_: SVI curve parameter
+    :param sigma_: SVI curve parameter
+    :return: SVI convexity
+    """
+    num1 = - pow(np.log(strike / forward) - m_, 2)
     den1 = pow(strike, 2) * pow(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2), 3 / 2)
 
-    num2 = np.log(strike / forward) - m_
-    num2 = -num2
+    num2 = - np.log(strike / forward) - m_
     den2 = pow(strike, 2) * np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2))
 
     num3 = 1
@@ -86,8 +107,7 @@ def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_:
 
     num5 = pow(b_, 2) * pow(((np.log(strike / forward) - m_) / (
                 strike * np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)))) + rho_ / strike, 2)
-    den5 = 4 * pow(maturity, 2)
-    pow((a_ + b_*(np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_ * (
+    den5 = 4 * pow(maturity, 2) * pow((a_ + b_*(np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_ * (
                 np.log(strike / forward) - m_))) / maturity, 3 / 2)
 
     secondterm = num5 / den5
@@ -121,10 +141,10 @@ def SSVI(k: float, theta: float, rho_: float, eta_: float, lambda_: float):
 
 def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
     """
-    :param params_list: parameters list : [rho_, eta_, lambda_]
-    :param inputs_list: inputs list : [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
-    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
-    :param weights_list: weights list : [w_1, w_2, w_3, ...]
+    :param params_list: [rho_, eta_, lambda_]
+    :param inputs_list: [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
+    :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
     :return: mean squared volatility error (MSVE)
     """
     MSVE = 0
@@ -137,11 +157,11 @@ def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_l
 
 def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list):
     """
-    :param k_list: inputs list : [k_1, k_2, k_3, ...]
-    :param atmfTotVar_list: ATMF implied total variance list : [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
-    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
-    :param weights_list: weights list : [w_1, w_2, w_3, ...]
-    :return: calibrated parameters list
+    :param k_list: [k_1, k_2, k_3, ...]
+    :param atmfTotVar_list: [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
+    :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :return: calibrated parameters dict : {rho_, eta_, lambda_}
     """
     init_params_list = [-0.75, 1, 0.5]
     inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
@@ -149,7 +169,8 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         SSVI_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktTotVar_list, weights_list)
+        args=(inputs_list, mktTotVar_list, weights_list),
+        tol=1e-6,
     )
     final_params = list(result.x)
     return {
@@ -160,6 +181,16 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
 
 
 def SSVI_skew(strike: float, theta: float, forward: float, maturity: float, rho_: float, eta_: float, lambda_: float):
+    """
+    :param strike: strike
+    :param theta: log-forward moneyness
+    :param forward: forward
+    :param maturity: maturity
+    :param rho_: SSVI parameter
+    :param eta_: SSVI parameter
+    :param lambda_: SSVI parameter
+    :return: SSVI skew
+    """
     phi = SSVI_phi(theta, eta_, lambda_)
     num = 0.5 * theta * ((phi * (rho_ + phi * np.log(strike / forward))) / (strike * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1))) + (rho_ * phi) / strike)
     den = 2 * maturity * np.sqrt((0.5 * theta * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(strike/forward)) + 1) / maturity)
@@ -206,10 +237,10 @@ def eSSVI(k: float, theta: float, a_: float, b_: float, c_: float, eta_: float, 
 
 def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
     """
-    :param params_list: parameters list : [a_, b_, c_, eta_, lambda_]
-    :param inputs_list: inputs list : [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
-    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
-    :param weights_list: weights list : [w_1, w_2, w_3, ...]
+    :param params_list: [a_, b_, c_, eta_, lambda_]
+    :param inputs_list: [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
+    :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
     :return: mean squared volatility error (MSVE)
     """
     MSVE = 0
@@ -223,11 +254,11 @@ def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_
 
 def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list):
     """
-    :param k_list: inputs list : [k_1, k_2, k_3, ...]
-    :param atmfTotVar_list: ATMF implied total variance list : [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
-    :param mktTotVar_list: market implied total variance list : [TotVar_1, TotVar_2, TotVar_3, ...]
-    :param weights_list: weights list : [w_1, w_2, w_3, ...]
-    :return: calibrated parameters list
+    :param k_list: [k_1, k_2, k_3, ...]
+    :param atmfTotVar_list: [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
+    :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :return: calibrated parameters dict : {a_, b_, c_, eta_, lambda_}
     """
     init_params_list = [-0.75, 0.5, 0, 1, 0.5]
     inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
@@ -235,7 +266,8 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         eSSVI_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktTotVar_list, weights_list)
+        args=(inputs_list, mktTotVar_list, weights_list),
+        tol=1e-6,
     )
     final_params = list(result.x)
     return {
@@ -249,6 +281,18 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
 
 def eSSVI_skew(strike: float, theta: float, forward: float, maturity: float, eta_: float, lambda_: float, a_: float,
                b_: float, c_: float):
+    """
+    :param strike: strike
+    :param theta: log-forward moneyness
+    :param forward: forward
+    :param maturity: maturity
+    :param eta_: eSSVI parameter
+    :param lambda_: eSSVI parameter
+    :param a_: eSSVI parameter
+    :param b_: eSSVI parameter
+    :param c_: eSSVI parameter
+    :return: eSSVI skew
+    """
     rho = eSSVI_rho(theta, a_, b_, c_)
     phi = eSSVI_phi(theta, eta_, lambda_)
     num = 0.5 * theta * ((phi * (rho + phi * np.log(strike / forward))) / (strike * (np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1))) + (rho * phi) / strike)
