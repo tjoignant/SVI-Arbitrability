@@ -903,3 +903,12 @@ end = time.perf_counter()
 print(f"{timer_id}/ Results Exported + Graphs Built ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
+
+# Display Absolute Calibration Arbitrability (ACA) Scores
+print("\nACA Scores:")
+print(f" - SVI : {round((1 - df['SVI Skew Test'].mean()) * 10, 2)}")
+print(f" - SSVI : {round((1 - df['SSVI Skew Test'].mean()) * 10, 2)}")
+print(f" - eSSVI : {round((1 - df['eSSVI Skew Test'].mean()) * 10, 2)}")
+
+# Display Graph
+plt.show()
