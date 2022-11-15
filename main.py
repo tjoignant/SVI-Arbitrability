@@ -477,13 +477,17 @@ for parametric_vol in ["SVI", "SSVI", "eSSVI"]:
         df.loc[df[put_cond].index[-1], f"{parametric_vol} s_max"] = ((1 - df_bis["Mid Perc"].values[-1]) / (
             df_bis["Strike Perc"].values[-1]) - df_bis[f"{parametric_vol} Delta Strike"].values[-1]) / \
                                                                     df_bis[f"{parametric_vol} Vega"].values[-1]
+    """
+    # Skew (approx.)
+    df[f"{parametric_vol} s_min"] = df.apply(lambda x: (-1 - x[f"{parametric_vol} Delta Strike"]) / x[f"{parametric_vol} Vega"], axis=1)
+    df[f"{parametric_vol} s_max"] = df.apply(lambda x: - x[f"{parametric_vol} Delta Strike"] / x[f"{parametric_vol} Vega"], axis=1)
+        """
     # Convexity
     df[f"{parametric_vol} c_min"] = df.apply(
         lambda x: -(1 / x[f"{parametric_vol} Vol"]) * (
                 1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x[f"{parametric_vol} d2"] * x[f"{parametric_vol} Skew"]) *
                   (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x[f"{parametric_vol} d1"] * x[f"{parametric_vol} Skew"]) - (
-                          1 / x["Strike Perc"]) *
-                  x[f"{parametric_vol} Skew"], axis=1)
+                          1 / x["Strike Perc"]) * x[f"{parametric_vol} Skew"], axis=1)
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Min Skew Bounds
 df_svi_smin_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI s_min",
@@ -553,9 +557,9 @@ df["SSVI BEUI"] = df.apply(lambda x: -(x["SSVI Delta Strike"] + x["SSVI Vega"] *
 df["eSSVI BEUI"] = df.apply(lambda x: -(x["eSSVI Delta Strike"] + x["eSSVI Vega"] * x["eSSVI Skew"]), axis=1)
 
 # Compute SVI, SSVI & eSSVI Binary European Down & In (BEDI) Price
-df["SVI BEDI"] = df.apply(lambda x: 1 - x["SVI BEUI"], axis=1)
-df["SSVI BEDI"] = df.apply(lambda x: 1 - x["SSVI BEUI"], axis=1)
-df["eSSVI BEDI"] = df.apply(lambda x: 1 - x["eSSVI BEUI"], axis=1)
+df["SVI BEDI"] = df.apply(lambda x: 1 + x["SVI Delta Strike"] + x["SVI Vega"] * x["SVI Skew"], axis=1)
+df["SSVI BEDI"] = df.apply(lambda x: 1 + x["SSVI Delta Strike"] + x["SSVI Vega"] * x["SSVI Skew"], axis=1)
+df["eSSVI BEDI"] = df.apply(lambda x: 1 + x["eSSVI Delta Strike"] + x["eSSVI Vega"] * x["eSSVI Skew"], axis=1)
 
 # Compute SVI, SSVI & eSSVI Shark-Jaw Test
 for maturity in df["Maturity"].unique():

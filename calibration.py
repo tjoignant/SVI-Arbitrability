@@ -46,7 +46,7 @@ def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list):
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list),
-        tol=1e-7,
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {
@@ -180,7 +180,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list),
-        tol=1e-7,
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {
@@ -322,7 +322,7 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list),
-        tol=1e-7,
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {

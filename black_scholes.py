@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import norm
 
 MAX_ITERS = 1000
-MAX_ERROR = pow(10, -6)
+MAX_ERROR = pow(10, -7)
 
 
 def BS_d1(f: float, k: float, t: float, v: float):
