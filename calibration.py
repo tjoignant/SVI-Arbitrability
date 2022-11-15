@@ -236,7 +236,7 @@ def SSVI_convexity(strike: float, theta: float, forward: float, maturity: float,
     num4 = rho_ * phi
     den4 = pow(strike, 2)
 
-    numtot = (theta / 2) * (num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4)
+    numtot = (theta / 2) * ((num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4))
     dentot = 2 * maturity * np.sqrt(((theta / 2) * (
             np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(
             strike / forward) + 1)) / maturity)
@@ -349,12 +349,11 @@ def eSSVI_skew(strike: float, theta: float, forward: float, maturity: float, eta
     """
     rho = eSSVI_rho(theta, a_, b_, c_)
     phi = eSSVI_phi(theta, eta_, lambda_)
-    num = 0.5 * theta * ((phi * (rho + phi * np.log(strike / forward))) / (
-                strike * (np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1))) + (
-                                     rho * phi) / strike)
+    num = 0.5 * theta * ((phi * (rho + phi * np.log(strike / forward))) / (strike * (np.sqrt(-pow(rho, 2) +
+          pow(rho + phi * np.log(strike / forward), 2) + 1))) + (rho * phi) / strike)
     den = 2 * maturity * np.sqrt((0.5 * theta * (
                 np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
-            strike / forward) + 1)) / maturity)
+                strike / forward) + 1)) / maturity)
     return num / den
 
 
@@ -390,13 +389,13 @@ def eSSVI_convexity(strike: float, theta: float, forward: float, maturity: float
     numtot = (theta / 2) * ((num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4))
     dentot = 2 * maturity * np.sqrt(((theta / 2) * (
             np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
-        strike / forward) + 1)) / maturity)
+            strike / forward) + 1)) / maturity)
 
     num5 = phi * (phi * np.log(strike / forward) + rho)
     den5 = strike * np.sqrt(pow(phi * np.log(strike / forward) + rho, 2) - pow(rho, 2) + 1)
 
     numtot2 = pow(theta / 2, 2) * pow((num5 / den5) + (phi * rho) / strike, 2)
     dentot2 = 4 * pow(maturity, 2) * pow(((theta / 2) * (np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(
-        strike / forward), 2) + 1) + rho * phi * np.log(strike / forward) + 1)) / maturity, 3 / 2)
+              strike / forward), 2) + 1) + rho * phi * np.log(strike / forward) + 1)) / maturity, 3 / 2)
 
     return (numtot / dentot) - (numtot2 / dentot2)

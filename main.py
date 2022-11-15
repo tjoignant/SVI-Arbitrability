@@ -1243,11 +1243,11 @@ start = end
 timer_id = timer_id + 1
 
 # Display Absolute Calibration Arbitrability (ACA) Scores
-print("\nACA Score (GL Bounds Test):")
+print("\nACA Score (Gourion-Lucic Bounds Test):")
 print(f" - SVI : {round((1 - df['SVI GL Bounds Test'].mean()) * 10, 2)}")
 print(f" - SSVI : {round((1 - df['SSVI GL Bounds Test'].mean()) * 10, 2)}")
 print(f" - eSSVI : {round((1 - df['eSSVI GL Bounds Test'].mean()) * 10, 2)}")
-print("\nACA Score (Shark-Jaw Test):")
+print("\nACA Score (Gourion Shark-Jaw Test):")
 print(f" - SVI : {round((1 - df['SVI SJ Test'].mean()) * 10, 2)}")
 print(f" - SSVI : {round((1 - df['SSVI SJ Test'].mean()) * 10, 2)}")
 print(f" - eSSVI : {round((1 - df['eSSVI SJ Test'].mean()) * 10, 2)}")
