@@ -251,7 +251,7 @@ df["d2"] = df.apply(
                                   v=x["Implied Vol"]), axis=1)
 
 # Set Minimisation Weight Column
-weights_col = "Implied Vol"
+df["Weight"] = df["Implied Vol"] * np.sqrt((df['Volm']))
 
 # Calibrate SVI Curves + Compute SVI ATMF Implied TV
 for maturity in df["Maturity"].unique():
@@ -259,7 +259,7 @@ for maturity in df["Maturity"].unique():
     SVI_params = calibration.SVI_calibration(
         k_list=list(df_mat["Log Forward Moneyness"]),
         mktTotVar_list=list(df_mat["Implied TV"]),
-        weights_list=list(df_mat[weights_col]),
+        weights_list=list(df_mat["Weight"]),
     )
     df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
     df.loc[df["Maturity"] == maturity, ['SVI ATMF Implied TV']] = \
@@ -271,7 +271,7 @@ SSVI_params = calibration.SSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
     atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
-    weights_list=list(df[weights_col]),
+    weights_list=list(df["Weight"]),
 )
 
 # Calibrate eSSVI Surface
@@ -279,7 +279,7 @@ eSSVI_params = calibration.eSSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
     atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
-    weights_list=list(df[weights_col]),
+    weights_list=list(df["Weight"]),
 )
 
 # Timer
@@ -908,11 +908,9 @@ for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["SVI
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Create Result Folder (if do not exist)
+# Export Dataframes in Results Folder
 if not os.path.exists('results'):
     os.makedirs('results')
-
-# Export Dataframes
 with pd.ExcelWriter("results/Results.xlsx") as writer:
     df.to_excel(writer, sheet_name="Dataframe")
     fig1.savefig('results/Market Data Coherence Verification.png')
@@ -927,10 +925,14 @@ start = end
 timer_id = timer_id + 1
 
 # Display Absolute Calibration Arbitrability (ACA) Scores
-print("\nACA Scores:")
+print("\nACA Score (GL Bounds Test):")
 print(f" - SVI : {round((1 - df['SVI GL Bounds Test'].mean()) * 10, 2)}")
 print(f" - SSVI : {round((1 - df['SSVI GL Bounds Test'].mean()) * 10, 2)}")
 print(f" - eSSVI : {round((1 - df['eSSVI GL Bounds Test'].mean()) * 10, 2)}")
+print("\nACA Score (Shark-Jaw Test):")
+print(f" - SVI : {round((1 - df['SVI SJ Test'].mean()) * 10, 2)}")
+print(f" - SSVI : {round((1 - df['SSVI SJ Test'].mean()) * 10, 2)}")
+print(f" - eSSVI : {round((1 - df['eSSVI SJ Test'].mean()) * 10, 2)}")
 
 # Display Graph
 plt.show()
