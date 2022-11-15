@@ -235,10 +235,6 @@ print(f"{timer_id}/ Market Implied Volatilities Computed with Brent & Newton-Rap
 start = end
 timer_id = timer_id + 1
 
-# Compute Log Forward Moneyness & Implied Total Variance (Implied TV)
-df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["Forward Perc"])), axis=1)
-df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
-
 # Compute Implied Delta Strike, Vega, d1 & d2
 df["Implied Delta Strike"] = df.apply(
     lambda x: black_scholes.BS_Delta_Strike(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
@@ -252,6 +248,10 @@ df["Implied d1"] = df.apply(
 df["Implied d2"] = df.apply(
     lambda x: black_scholes.BS_d2(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                   v=x["Implied Vol"]), axis=1)
+
+# Compute Log Forward Moneyness & Implied Total Variance (Implied TV)
+df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["Forward Perc"])), axis=1)
+df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
 # Set Minimisation Weight Column
 df["Weight"] = df["Implied Vol"]
