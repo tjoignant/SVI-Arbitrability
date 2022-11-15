@@ -74,13 +74,14 @@ def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: floa
     num1 = np.log(strike / forward) - m_
     den1 = np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2))
 
-    num2 = a_ + b_ * (np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_ * np.log(strike / forward) - m_ * rho_)
+    num2 = a_ + b_ * (np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_ * np.log(
+        strike / forward) - m_ * rho_)
     den2 = maturity
 
     numtot = b_ * (rho_ + num1 / den1)
     dentot = 2 * maturity * strike * np.sqrt(num2 / den2)
 
-    return numtot/dentot
+    return numtot / dentot
 
 
 def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_: float, rho_: float, m_: float,
@@ -110,7 +111,7 @@ def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_:
 
     dentot = 2 * maturity * np.sqrt(
         (a_ + b_ * (np.sqrt(pow(np.log(strike / forward) - m_, 2) + pow(sigma_, 2)) + rho_ * (
-        np.log(strike / forward) - m_))) / maturity)
+                np.log(strike / forward) - m_))) / maturity)
 
     firstterm = (b_ * ((num1 / den1) + (num2 / den2) + (num3 / den3) + (num4 / den4))) / dentot
 
@@ -145,7 +146,7 @@ def SSVI(k: float, theta: float, rho_: float, eta_: float, lambda_: float):
     :return: total variance
     """
     return 0.5 * theta * (1 + rho_ * SSVI_phi(theta, eta_, lambda_) * k +
-           np.sqrt(pow(SSVI_phi(theta, eta_, lambda_) * k + rho_, 2) + 1 - pow(rho_, 2)))
+                          np.sqrt(pow(SSVI_phi(theta, eta_, lambda_) * k + rho_, 2) + 1 - pow(rho_, 2)))
 
 
 def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
@@ -202,11 +203,11 @@ def SSVI_skew(strike: float, theta: float, forward: float, maturity: float, rho_
     """
     phi = SSVI_phi(theta, eta_, lambda_)
     num = 0.5 * theta * ((phi * (rho_ + phi * np.log(strike / forward))) / (
-                strike * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1))) + (
-                                     rho_ * phi) / strike)
+            strike * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1))) + (
+                                 rho_ * phi) / strike)
     den = 2 * maturity * np.sqrt((0.5 * theta * (
-                np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(
-                strike / forward) + 1)) / maturity)
+            np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(
+        strike / forward) + 1)) / maturity)
     return num / den
 
 
@@ -239,7 +240,7 @@ def SSVI_convexity(strike: float, theta: float, forward: float, maturity: float,
     numtot = (theta / 2) * ((num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4))
     dentot = 2 * maturity * np.sqrt(((theta / 2) * (
             np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(
-            strike / forward) + 1)) / maturity)
+        strike / forward) + 1)) / maturity)
 
     num5 = phi * (phi * np.log(strike / forward) + rho_)
     den5 = strike * np.sqrt(pow(phi * np.log(strike / forward) + rho_, 2) - pow(rho_, 2) + 1)
@@ -350,10 +351,13 @@ def eSSVI_skew(strike: float, theta: float, forward: float, maturity: float, eta
     rho = eSSVI_rho(theta, a_, b_, c_)
     phi = eSSVI_phi(theta, eta_, lambda_)
     num = 0.5 * theta * ((phi * (rho + phi * np.log(strike / forward))) / (strike * (np.sqrt(-pow(rho, 2) +
-          pow(rho + phi * np.log(strike / forward), 2) + 1))) + (rho * phi) / strike)
+                                                                                             pow(rho + phi * np.log(
+                                                                                                 strike / forward),
+                                                                                                 2) + 1))) + (
+                                     rho * phi) / strike)
     den = 2 * maturity * np.sqrt((0.5 * theta * (
-                np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
-                strike / forward) + 1)) / maturity)
+            np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
+        strike / forward) + 1)) / maturity)
     return num / den
 
 
@@ -389,13 +393,13 @@ def eSSVI_convexity(strike: float, theta: float, forward: float, maturity: float
     numtot = (theta / 2) * ((num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4))
     dentot = 2 * maturity * np.sqrt(((theta / 2) * (
             np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
-            strike / forward) + 1)) / maturity)
+        strike / forward) + 1)) / maturity)
 
     num5 = phi * (phi * np.log(strike / forward) + rho)
     den5 = strike * np.sqrt(pow(phi * np.log(strike / forward) + rho, 2) - pow(rho, 2) + 1)
 
     numtot2 = pow(theta / 2, 2) * pow((num5 / den5) + (phi * rho) / strike, 2)
     dentot2 = 4 * pow(maturity, 2) * pow(((theta / 2) * (np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(
-              strike / forward), 2) + 1) + rho * phi * np.log(strike / forward) + 1)) / maturity, 3 / 2)
+        strike / forward), 2) + 1) + rho * phi * np.log(strike / forward) + 1)) / maturity, 3 / 2)
 
     return (numtot / dentot) - (numtot2 / dentot2)
