@@ -226,6 +226,9 @@ nb_options_text.append("Implied Vol.")
 # Drop Implied Vol Error Points
 df = df[df["Implied Vol"] != -1].copy()
 
+# Reorder Dataframe
+df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
+
 # Timer
 end = time.perf_counter()
 print(f"{timer_id}/ Market Implied Volatilities Computed with Brent & Newton-Raphson ({round(end - start, 1)}s)")
@@ -236,22 +239,22 @@ timer_id = timer_id + 1
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["Forward Perc"])), axis=1)
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
-# Compute BS Delta Strike, Vega, d1 & d2
-df["Delta Strike"] = df.apply(
+# Compute Implied Delta Strike, Vega, d1 & d2
+df["Implied Delta Strike"] = df.apply(
     lambda x: black_scholes.BS_Delta_Strike(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                             v=x["Implied Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
-df["Vega"] = df.apply(
+df["Implied Vega"] = df.apply(
     lambda x: black_scholes.BS_Vega(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                     v=x["Implied Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
-df["d1"] = df.apply(
+df["Implied d1"] = df.apply(
     lambda x: black_scholes.BS_d1(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                   v=x["Implied Vol"]), axis=1)
-df["d2"] = df.apply(
+df["Implied d2"] = df.apply(
     lambda x: black_scholes.BS_d2(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                   v=x["Implied Vol"]), axis=1)
 
 # Set Minimisation Weight Column
-df["Weight"] = df["Implied Vol"] * np.sqrt((df['Volm']))
+df["Weight"] = df["Implied Vol"]
 
 # Calibrate SVI Curves + Compute SVI ATMF Implied TV
 for maturity in df["Maturity"].unique():
@@ -332,9 +335,6 @@ df["eSSVI Price Error Perc"] = \
         f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"], v=x["eSSVI Vol"], df=x["ZC Perc"],
         OptType=x["Type"][0]) - x["Mid Perc"]) * 100, axis=1)
 
-# Reorder Dataframe
-df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
-
 # Compute SVI Absolute Volatility Error Surface
 df_list = []
 for maturity in df["Maturity"].unique():
@@ -368,6 +368,10 @@ for maturity in df["Maturity"].unique():
 df_essvi_vol_error_surface = pd.concat(df_list, axis=1)
 df_essvi_vol_error_surface.sort_index(inplace=True)
 
+# Set Absolute Volatility Error Min & Max
+vol_error_surface_min = min(df["SVI Vol Error Perc"].min(), df["SSVI Vol Error Perc"].min(), df["eSSVI Vol Error Perc"].min())
+vol_error_surface_max = max(df["SVI Vol Error Perc"].max(), df["SSVI Vol Error Perc"].max(), df["eSSVI Vol Error Perc"].max())
+
 # Compute SVI Absolute Price Error Surface
 df_list = []
 for maturity in df["Maturity"].unique():
@@ -400,6 +404,10 @@ for maturity in df["Maturity"].unique():
     df_list.append(df_mat)
 df_essvi_price_error_surface = pd.concat(df_list, axis=1)
 df_essvi_price_error_surface.sort_index(inplace=True)
+
+# Set Absolute Price Error Min & Max
+price_error_surface_min = min(df["SVI Price Error Perc"].min(), df["SSVI Price Error Perc"].min(), df["eSSVI Price Error Perc"].min())
+price_error_surface_max = max(df["SVI Price Error Perc"].max(), df["SSVI Price Error Perc"].max(), df["eSSVI Price Error Perc"].max())
 
 # Timer
 end = time.perf_counter()
@@ -436,6 +444,43 @@ df["eSSVI Skew"] = df.apply(lambda x:
                                                    lambda_=eSSVI_params["lambda_"],
                                                    a_=eSSVI_params["a_"], b_=eSSVI_params["b_"],
                                                    c_=eSSVI_params["c_"], ), axis=1)
+
+# Create Skew Surface (SVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SVI Skew"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_svi_skew_surface = pd.concat(df_list, axis=1)
+df_svi_skew_surface.sort_index(inplace=True)
+
+# Create Skew Surface (SSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SSVI Skew"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_ssvi_skew_surface = pd.concat(df_list, axis=1)
+df_ssvi_skew_surface.sort_index(inplace=True)
+
+# Create Skew Surface (eSSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["eSSVI Skew"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_essvi_skew_surface = pd.concat(df_list, axis=1)
+df_essvi_skew_surface.sort_index(inplace=True)
+
+# Set Skew Min & Max
+skew_surface_min = min(df["SVI Skew"].min(), df["SSVI Skew"].min(), df["eSSVI Skew"].min())
+skew_surface_max = max(df["SVI Skew"].max(), df["SSVI Skew"].max(), df["eSSVI Skew"].max())
 
 # Compute SVI, SSVI & eSSVI Convexity
 for maturity in df["Maturity"].unique():
@@ -474,58 +519,263 @@ df["eSSVI Convexity"] = df.apply(lambda x:
                                                    a_=eSSVI_params["a_"], b_=eSSVI_params["b_"],
                                                    c_=eSSVI_params["c_"], ), axis=1)
 
-# Compute Gourion-Lucic Skew Bounds
+# Create Convexity Surface (SVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SVI Convexity"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_svi_convexity_surface = pd.concat(df_list, axis=1)
+df_svi_convexity_surface.sort_index(inplace=True)
+
+# Create Convexity Surface (SSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SSVI Convexity"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_ssvi_convexity_surface = pd.concat(df_list, axis=1)
+df_ssvi_convexity_surface.sort_index(inplace=True)
+
+# Create Convexity Surface (eSSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["eSSVI Convexity"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_essvi_convexity_surface = pd.concat(df_list, axis=1)
+df_essvi_convexity_surface.sort_index(inplace=True)
+
+# Set Convexity Min & Max
+convexity_surface_min = min(df["SVI Convexity"].min(), df["SSVI Convexity"].min(), df["eSSVI Convexity"].min())
+convexity_surface_max = max(df["SVI Convexity"].max(), df["SSVI Convexity"].max(), df["eSSVI Convexity"].max())
+
+# Compute SVI Delta Strike, Vega, d1 & d2
+df["SVI Delta Strike"] = df.apply(
+    lambda x: black_scholes.BS_Delta_Strike(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                            v=x["SVI Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
+df["SVI Vega"] = df.apply(
+    lambda x: black_scholes.BS_Vega(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                    v=x["SVI Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
+df["SVI d1"] = df.apply(
+    lambda x: black_scholes.BS_d1(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["SVI Vol"]), axis=1)
+df["SVI d2"] = df.apply(
+    lambda x: black_scholes.BS_d2(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["SVI Vol"]), axis=1)
+
+# Compute SSVI Delta Strike, Vega, d1 & d2
+df["SSVI Delta Strike"] = df.apply(
+    lambda x: black_scholes.BS_Delta_Strike(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                            v=x["SSVI Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
+df["SSVI Vega"] = df.apply(
+    lambda x: black_scholes.BS_Vega(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                    v=x["SSVI Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
+df["SSVI d1"] = df.apply(
+    lambda x: black_scholes.BS_d1(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["SSVI Vol"]), axis=1)
+df["SSVI d2"] = df.apply(
+    lambda x: black_scholes.BS_d2(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["SSVI Vol"]), axis=1)
+
+# Compute eSSVI Delta Strike, Vega, d1 & d2
+df["eSSVI Delta Strike"] = df.apply(
+    lambda x: black_scholes.BS_Delta_Strike(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                            v=x["eSSVI Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
+df["eSSVI Vega"] = df.apply(
+    lambda x: black_scholes.BS_Vega(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                    v=x["eSSVI Vol"], df=x["ZC Perc"], OptType=x["Type"][0]), axis=1)
+df["eSSVI d1"] = df.apply(
+    lambda x: black_scholes.BS_d1(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["eSSVI Vol"]), axis=1)
+df["eSSVI d2"] = df.apply(
+    lambda x: black_scholes.BS_d2(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
+                                  v=x["eSSVI Vol"]), axis=1)
+
+# Compute Gourion-Lucic Skew Bounds (SVI)
 for maturity in df["Maturity"].unique():
     # Types Condition
     call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
     put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
     # S_min (call)
     df_bis = df[call_cond].copy()
-    df.loc[call_cond, ['s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["Delta Strike"]) / df_bis["Vega"]
-    df.loc[df[call_cond].index[0], "s_min"] = ((df_bis["Mid Perc"].values[0] - 1) / (
-        df_bis["Strike Perc"].values[0]) - df_bis["Delta Strike"].values[0]) / df_bis["Vega"].values[0]
+    df.loc[call_cond, ['SVI s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["SVI Delta Strike"]) / df_bis["SVI Vega"]
+    df.loc[df[call_cond].index[0], "SVI s_min"] = ((df_bis["Mid Perc"].values[0] - 1) / (
+        df_bis["Strike Perc"].values[0]) - df_bis["SVI Delta Strike"].values[0]) / df_bis["SVI Vega"].values[0]
     # S_max (call)
-    df.loc[call_cond, ['s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
-            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
-    df.loc[df[call_cond].index[-1], "s_max"] = - df_bis["Delta Strike"].values[-1] / df_bis["Vega"].values[-1]
+    df.loc[call_cond, ['SVI s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["SVI Delta Strike"]) / df_bis["SVI Vega"]
+    df.loc[df[call_cond].index[-1], "SVI s_max"] = - df_bis["SVI Delta Strike"].values[-1] / df_bis["SVI Vega"].values[-1]
     # S_min (put)
     df_bis = df[put_cond].copy()
-    df.loc[put_cond, ['s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["Delta Strike"]) / df_bis["Vega"]
-    df.loc[df[put_cond].index[0], "s_min"] = - df_bis["Delta Strike"].values[0] / df_bis["Vega"].values[0]
+    df.loc[put_cond, ['SVI s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["SVI Delta Strike"]) / df_bis["SVI Vega"]
+    df.loc[df[put_cond].index[0], "SVI s_min"] = - df_bis["SVI Delta Strike"].values[0] / df_bis["SVI Vega"].values[0]
     # S_max (put)
-    df.loc[put_cond, ['s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
-            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["Delta Strike"]) / df_bis["Vega"]
-    df.loc[df[put_cond].index[-1], "s_max"] = ((1 - df_bis["Mid Perc"].values[-1]) / (
-        df_bis["Strike Perc"].values[-1]) - df_bis["Delta Strike"].values[-1]) / df_bis["Vega"].values[-1]
+    df.loc[put_cond, ['SVI s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["SVI Delta Strike"]) / df_bis["SVI Vega"]
+    df.loc[df[put_cond].index[-1], "SVI s_max"] = ((1 - df_bis["Mid Perc"].values[-1]) / (
+        df_bis["Strike Perc"].values[-1]) - df_bis["SVI Delta Strike"].values[-1]) / df_bis["SVI Vega"].values[-1]
+
+# Compute Gourion-Lucic Skew Bounds (SSVI)
+for maturity in df["Maturity"].unique():
+    # Types Condition
+    call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
+    put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
+    # S_min (call)
+    df_bis = df[call_cond].copy()
+    df.loc[call_cond, ['SSVI s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["SSVI Delta Strike"]) / df_bis["SSVI Vega"]
+    df.loc[df[call_cond].index[0], "SSVI s_min"] = ((df_bis["Mid Perc"].values[0] - 1) / (
+        df_bis["Strike Perc"].values[0]) - df_bis["SSVI Delta Strike"].values[0]) / df_bis["SSVI Vega"].values[0]
+    # S_max (call)
+    df.loc[call_cond, ['SSVI s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["SSVI Delta Strike"]) / df_bis["SSVI Vega"]
+    df.loc[df[call_cond].index[-1], "SSVI s_max"] = - df_bis["SSVI Delta Strike"].values[-1] / df_bis["SSVI Vega"].values[-1]
+    # S_min (put)
+    df_bis = df[put_cond].copy()
+    df.loc[put_cond, ['SSVI s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["SSVI Delta Strike"]) / df_bis["SSVI Vega"]
+    df.loc[df[put_cond].index[0], "SSVI s_min"] = - df_bis["SSVI Delta Strike"].values[0] / df_bis["SSVI Vega"].values[0]
+    # S_max (put)
+    df.loc[put_cond, ['SSVI s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["SSVI Delta Strike"]) / df_bis["SSVI Vega"]
+    df.loc[df[put_cond].index[-1], "SSVI s_max"] = ((1 - df_bis["Mid Perc"].values[-1]) / (
+        df_bis["Strike Perc"].values[-1]) - df_bis["SSVI Delta Strike"].values[-1]) / df_bis["SSVI Vega"].values[-1]
+
+# Compute Gourion-Lucic Skew Bounds (eSSVI)
+for maturity in df["Maturity"].unique():
+    # Types Condition
+    call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
+    put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
+    # S_min (call)
+    df_bis = df[call_cond].copy()
+    df.loc[call_cond, ['eSSVI s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["eSSVI Delta Strike"]) / df_bis["eSSVI Vega"]
+    df.loc[df[call_cond].index[0], "eSSVI s_min"] = ((df_bis["Mid Perc"].values[0] - 1) / (
+        df_bis["Strike Perc"].values[0]) - df_bis["eSSVI Delta Strike"].values[0]) / df_bis["eSSVI Vega"].values[0]
+    # S_max (call)
+    df.loc[call_cond, ['eSSVI s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["eSSVI Delta Strike"]) / df_bis["eSSVI Vega"]
+    df.loc[df[call_cond].index[-1], "eSSVI s_max"] = - df_bis["eSSVI Delta Strike"].values[-1] / df_bis["eSSVI Vega"].values[-1]
+    # S_min (put)
+    df_bis = df[put_cond].copy()
+    df.loc[put_cond, ['eSSVI s_min']] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis["eSSVI Delta Strike"]) / df_bis["eSSVI Vega"]
+    df.loc[df[put_cond].index[0], "eSSVI s_min"] = - df_bis["eSSVI Delta Strike"].values[0] / df_bis["eSSVI Vega"].values[0]
+    # S_max (put)
+    df.loc[put_cond, ['eSSVI s_max']] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis["eSSVI Delta Strike"]) / df_bis["eSSVI Vega"]
+    df.loc[df[put_cond].index[-1], "eSSVI s_max"] = ((1 - df_bis["Mid Perc"].values[-1]) / (
+        df_bis["Strike Perc"].values[-1]) - df_bis["eSSVI Delta Strike"].values[-1]) / df_bis["eSSVI Vega"].values[-1]
+
+# Create Gourion-Lucic Min Skew Bounds Surface (SVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SVI s_min"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_svi_smin_surface = pd.concat(df_list, axis=1)
+df_svi_smin_surface.sort_index(inplace=True)
+
+# Create Gourion-Lucic Min Skew Bounds Surface (SSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SSVI s_min"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_ssvi_smin_surface = pd.concat(df_list, axis=1)
+df_ssvi_smin_surface.sort_index(inplace=True)
+
+# Create Gourion-Lucic Min Skew Bounds Surface (eSSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["eSSVI s_min"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_essvi_smin_surface = pd.concat(df_list, axis=1)
+df_essvi_smin_surface.sort_index(inplace=True)
+
+# Set Gourion-Lucic Min Skew Bounds Min & Max
+smin_surface_min = min(df["SVI s_min"].min(), df["SSVI s_min"].min(), df["eSSVI s_min"].min())
+smin_surface_max = max(df["SVI s_min"].max(), df["SSVI s_min"].max(), df["eSSVI s_min"].max())
+
+# Create Gourion-Lucic Max Skew Bounds Surface (SVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SVI s_max"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_svi_smax_surface = pd.concat(df_list, axis=1)
+df_svi_smax_surface.sort_index(inplace=True)
+
+# Create Gourion-Lucic Max Skew Bounds Surface (SSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["SSVI s_max"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_ssvi_smax_surface = pd.concat(df_list, axis=1)
+df_ssvi_smax_surface.sort_index(inplace=True)
+
+# Create Gourion-Lucic Max Skew Bounds Surface (eSSVI)
+df_list = []
+for maturity in df["Maturity"].unique():
+    df_mat = df[(df["Maturity"] == maturity) & (df["Strike"].isin(strike_list))].copy()
+    df_mat.index = df_mat["Strike"]
+    df_mat = df_mat[["eSSVI s_max"]]
+    df_mat.columns = [maturity]
+    df_list.append(df_mat)
+df_essvi_smax_surface = pd.concat(df_list, axis=1)
+df_essvi_smax_surface.sort_index(inplace=True)
+
+# Set Gourion-Lucic Max Skew Bounds Min & Max
+smax_surface_min = min(df["SVI s_max"].min(), df["SSVI s_max"].min(), df["eSSVI s_max"].min())
+smax_surface_max = max(df["SVI s_max"].max(), df["SSVI s_max"].max(), df["eSSVI s_max"].max())
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Convexity Bounds
-df["s_conv_min SVI"] = df.apply(
-    lambda x: -(1 / x["SVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["SVI Skew"]) *
-              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["SVI Skew"]) - (1 / x["Strike Perc"]) *
+df["SVI s_conv_min"] = df.apply(
+    lambda x: -(1 / x["SVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["SVI d2"] * x["SVI Skew"]) *
+              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["SVI d1"] * x["SVI Skew"]) - (1 / x["Strike Perc"]) *
               x["SVI Skew"], axis=1)
-df["s_conv_min SSVI"] = df.apply(
-    lambda x: -(1 / x["SSVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["SSVI Skew"]) *
-              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["SSVI Skew"]) - (1 / x["Strike Perc"]) *
+df["SSVI s_conv_min"] = df.apply(
+    lambda x: -(1 / x["SSVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["SSVI d2"] * x["SSVI Skew"]) *
+              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["SSVI d1"] * x["SSVI Skew"]) - (1 / x["Strike Perc"]) *
               x["SSVI Skew"], axis=1)
-df["s_conv_min eSSVI"] = df.apply(
-    lambda x: -(1 / x["eSSVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d2"] * x["eSSVI Skew"]) *
-              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["d1"] * x["eSSVI Skew"]) - (1 / x["Strike Perc"]) *
+df["eSSVI s_conv_min"] = df.apply(
+    lambda x: -(1 / x["eSSVI Vol"]) * (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["eSSVI d2"] * x["eSSVI Skew"]) *
+              (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x["eSSVI d1"] * x["eSSVI Skew"]) - (1 / x["Strike Perc"]) *
               x["eSSVI Skew"], axis=1)
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Bounds Test
 if not use_convexity_bounds:
-    df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
-    df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
-    df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
+    df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["SVI s_min"] < x["SVI Skew"] < x["SVI s_max"] else 1, axis=1)
+    df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["SSVI s_min"] < x["SSVI Skew"] < x["SSVI s_max"] else 1, axis=1)
+    df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["eSSVI s_min"] < x["eSSVI Skew"] < x["eSSVI s_max"] else 1, axis=1)
 else:
     df["SVI GL Bounds Test"] = df.apply(
-        lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["s_conv_min SVI"] < x["SVI Convexity"] else 1, axis=1)
+        lambda x: 0 if x["SVI s_min"] < x["SVI Skew"] < x["SVI s_max"] and x["SVI s_conv_min"] < x["SVI Convexity"] else 1, axis=1)
     df["SSVI GL Bounds Test"] = df.apply(
-        lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] and x["s_conv_min SSVI"] < x["SSVI Convexity"] else 1, axis=1)
+        lambda x: 0 if x["SSVI s_min"] < x["SSVI Skew"] < x["SSVI s_max"] and x["SSVI s_conv_min"] < x["SSVI Convexity"] else 1, axis=1)
     df["eSSVI GL Bounds Test"] = df.apply(
-        lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] and x["s_conv_min eSSVI"] < x["eSSVI Convexity"] else 1, axis=1)
+        lambda x: 0 if x["eSSVI s_min"] < x["eSSVI Skew"] < x["eSSVI s_max"] and x["eSSVI s_conv_min"] < x["eSSVI Convexity"] else 1, axis=1)
 
 # Create Gourion-Lucic Skew Bounds Arbitrability Surface (SVI)
 df_list = []
@@ -567,9 +817,9 @@ start = end
 timer_id = timer_id + 1
 
 # Compute SVI, SSVI & eSSVI Binary European Up & In (BEUI) Price
-df["SVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SVI Skew"]), axis=1)
-df["SSVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["SSVI Skew"]), axis=1)
-df["eSSVI BEUI"] = df.apply(lambda x: -(x["Delta Strike"] + x["Vega"] * x["eSSVI Skew"]), axis=1)
+df["SVI BEUI"] = df.apply(lambda x: -(x["SVI Delta Strike"] + x["SVI Vega"] * x["SVI Skew"]), axis=1)
+df["SSVI BEUI"] = df.apply(lambda x: -(x["SSVI Delta Strike"] + x["SSVI Vega"] * x["SSVI Skew"]), axis=1)
+df["eSSVI BEUI"] = df.apply(lambda x: -(x["eSSVI Delta Strike"] + x["eSSVI Vega"] * x["eSSVI Skew"]), axis=1)
 
 # Compute SVI, SSVI & eSSVI Binary European Down & In (BEDI) Price
 df["SVI BEDI"] = df.apply(lambda x: 1 - x["SVI BEUI"], axis=1)
@@ -584,11 +834,11 @@ for maturity in df["Maturity"].unique():
     # Call Triangles (CT)
     df_bis = df[call_cond].copy()
     df.loc[call_cond, ['SVI SJ CT']] = df_bis["Mid Perc"].shift(1) - df_bis["Mid Perc"] - (
-                df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["SVI BEDI"]
+                df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["SVI BEUI"]
     df.loc[call_cond, ['SSVI SJ CT']] = df_bis["Mid Perc"].shift(1) - df_bis["Mid Perc"] - (
-                df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["SSVI BEDI"]
+                df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["SSVI BEUI"]
     df.loc[call_cond, ['eSSVI SJ CT']] = df_bis["Mid Perc"].shift(1) - df_bis["Mid Perc"] - (
-                df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["eSSVI BEDI"]
+                df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["eSSVI BEUI"]
     # Put Triangles (PT)
     df_bis = df[put_cond].copy()
     df.loc[put_cond, ['SVI SJ PT']] = df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"] - (
@@ -659,18 +909,24 @@ fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig2, axs2 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
 fig3, axs3 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5), sharey=True)
 fig4, axs4 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5), sharey=True)
+fig5, axs5 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5), sharey=True)
+fig6, axs6 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5), sharey=True)
 
 # Set Graphs Figure Title
 fig1.suptitle(f"Market Data Coherence Verification ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
-fig2.suptitle(f"Parametric Volatilities Calibration ({spot_date.strftime('%d-%b-%Y')})",
+fig2.suptitle(f"Calibration Vol. Curves & Surfaces ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
-fig3.suptitle(f"Volatility Calibration Errors ({spot_date.strftime('%d-%b-%Y')})",
+fig3.suptitle(f"Calibrated Vol. Errors ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
-fig4.suptitle(f"Arbitograms ({spot_date.strftime('%d-%b-%Y')})",
+fig4.suptitle(f"Calibrated Vol. Sensibility ({spot_date.strftime('%d-%b-%Y')})",
+              fontweight='bold', fontsize=12.5)
+fig5.suptitle(f"Gourion-Lucic Arbitrability Bounds ({spot_date.strftime('%d-%b-%Y')})",
+              fontweight='bold', fontsize=12.5)
+fig6.suptitle(f"Arbitograms ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
 
-# Plot Number of Options Per Steps
+# Plot Fig1: Number of Options Per Steps
 nb_options_text.append("Calibration")
 nb_options_nr.append(nb_options_nr[-1])
 nb_options_brent.append(nb_options_brent[-1])
@@ -681,7 +937,7 @@ axs1[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[0, 0].legend(loc=legend_loc)
 axs1[0, 0].grid()
 
-# Plot Implied Forward & ZC
+# Plot Fig1: Implied Forward & ZC
 maturity_list = []
 forward_list = []
 zc_list = []
@@ -699,7 +955,7 @@ axs1[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[1, 0].xaxis.set_major_formatter(DateFormatter("%b-%y"))
 axs1[1, 0].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
-# Plot Implied Total Variance
+# Plot Fig1: Implied Total Variance
 percentage = 70
 for strike in df["Strike"].unique():
     df_strike = df[(df["Strike"] == strike)].copy()
@@ -716,7 +972,7 @@ axs1[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[0, 1].xaxis.set_major_formatter(DateFormatter("%b-%y"))
 axs1[0, 1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
 
-# Plot Market Implied Volatilities
+# Plot Fig1: Market Implied Volatilities
 for maturity in df["Pretty Maturity"].unique():
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
@@ -727,30 +983,30 @@ axs1[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
 axs1[1, 1].legend(loc=legend_loc)
 
-# Plot Market Implied Delta Strike
+# Plot Fig1: Market Implied Delta Strike
 for maturity, i in zip(df["Pretty Maturity"].unique(), range(0, len(df["Pretty Maturity"].unique()))):
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
     df_put_bis = df_bis[(df_bis["Type"] == "Put")].copy()
     df_call_bis = df_bis[(df_bis["Type"] == "Call")].copy()
-    axs1[0, 2].plot(df_put_bis["Strike"], df_put_bis["Delta Strike"], label=maturity, color=color_list[i])
-    axs1[0, 2].plot(df_call_bis["Strike"], df_call_bis["Delta Strike"], color=color_list[i])
+    axs1[0, 2].plot(df_put_bis["Strike"], df_put_bis["Implied Delta Strike"], label=maturity, color=color_list[i])
+    axs1[0, 2].plot(df_call_bis["Strike"], df_call_bis["Implied Delta Strike"], color=color_list[i])
 axs1[0, 2].grid()
 axs1[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[0, 2].set_title("Market Implied Deltas Strike", fontsize=title_font_size)
 axs1[0, 2].legend(loc=legend_loc)
 
-# Plot Market Implied Vegas
+# Plot Fig1: Market Implied Vegas
 for maturity in df["Pretty Maturity"].unique():
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
-    axs1[1, 2].plot(df_bis["Strike"], df_bis["Vega"], label=maturity)
+    axs1[1, 2].plot(df_bis["Strike"], df_bis["Implied Vega"], label=maturity)
 axs1[1, 2].grid()
 axs1[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs1[1, 2].set_title("Market Implied Vegas", fontsize=title_font_size)
 axs1[1, 2].legend(loc=legend_loc)
 
-# Plot SVI Calibration
+# Plot Fig2: SVI Calibration
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
@@ -764,7 +1020,7 @@ axs2[0, 0].legend(loc=legend_loc)
 axs2[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[0, 0].set_title("SVI Calibration", fontsize=title_font_size)
 
-# Plot SSVI Calibration
+# Plot Fig2: SSVI Calibration
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
@@ -778,7 +1034,7 @@ axs2[0, 1].legend(loc=legend_loc)
 axs2[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[0, 1].set_title("SSVI Calibration", fontsize=title_font_size)
 
-# Plot eSSVI Calibration
+# Plot Fig2: eSSVI Calibration
 k_list = np.linspace(-1, 1, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
@@ -793,7 +1049,7 @@ axs2[0, 2].legend(loc=legend_loc)
 axs2[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[0, 2].set_title("eSSVI Calibration", fontsize=title_font_size)
 
-# Plot SVI Parameters Evolution
+# Plot Fig2: SVI Parameters Evolution
 svi_a = []
 svi_b = []
 svi_rho = []
@@ -817,7 +1073,7 @@ axs2[1, 0].legend(loc=legend_loc)
 axs2[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 0].set_title("SVI Parameters Evolution", fontsize=title_font_size)
 
-# Plot SSVI/eSSVI Phi Parameter Evolution
+# Plot Fig2: SSVI/eSSVI Phi Parameter Evolution
 ssvi_phi = []
 essvi_phi = []
 for maturity in df["Maturity"].unique():
@@ -832,7 +1088,7 @@ axs2[1, 1].legend(loc=legend_loc)
 axs2[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 1].set_title("Phi Parameter Evolution", fontsize=title_font_size)
 
-# Plot SSVI/eSSVI Rho Parameter Evolution
+# Plot Fig2: Plot SSVI/eSSVI Rho Parameter Evolution
 ssvi_rho = []
 essvi_rho = []
 for maturity in df["Maturity"].unique():
@@ -848,13 +1104,13 @@ axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 2].set_title("Rho Parameter Evolution", fontsize=title_font_size)
 
-# Plot Volatility Calibration Error Surfaces
+# Plot Fig3: Calibrated Volatility Error Surfaces
 g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, annot=True,
-                 vmin=0, vmax=10)
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
 g2 = sns.heatmap(df_ssvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 1], cbar=False, annot=True,
-                 vmin=0, vmax=10)
-g3 = sns.heatmap(df_essvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 2], annot=True, vmin=0,
-                 vmax=10)
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
+g3 = sns.heatmap(df_essvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 2], cbar=True, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
 for g, ax, name in zip([g1, g2, g3], [axs3[0, 0], axs3[0, 1], axs3[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} Vol. Error (in %)", fontsize=title_font_size)
@@ -863,13 +1119,13 @@ for g, ax, name in zip([g1, g2, g3], [axs3[0, 0], axs3[0, 1], axs3[0, 2]], ["SVI
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Price Calibration Error Surfaces
+# Plot Fig3: Calibrated Price Error Surfaces
 g1 = sns.heatmap(df_svi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 0], cbar=False, annot=True,
-                 vmin=0, vmax=0.25)
+                 vmin=price_error_surface_min, vmax=price_error_surface_max)
 g2 = sns.heatmap(df_ssvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 1], cbar=False, annot=True,
-                 vmin=0, vmax=0.25)
-g3 = sns.heatmap(df_essvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 2], annot=True, vmin=0,
-                 vmax=0.25)
+                 vmin=price_error_surface_min, vmax=price_error_surface_max)
+g3 = sns.heatmap(df_essvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 2], cbar=True, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max)
 for g, ax, name in zip([g1, g2, g3], [axs3[1, 0], axs3[1, 1], axs3[1, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} BS Price Error (in %)", fontsize=title_font_size)
@@ -878,14 +1134,74 @@ for g, ax, name in zip([g1, g2, g3], [axs3[1, 0], axs3[1, 1], axs3[1, 2]], ["SVI
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Skew Arbitrability Surfaces (of most liquid strikes)
-g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 0], cbar=False, vmin=-1, vmax=1,
-                 annot=True)
-g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, vmin=-1, vmax=1,
-                 annot=True)
-g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], cbar=False, vmin=-1, vmax=1,
-                 annot=True)
+# Plot Fig4: Calibrated Volatility Skew Surfaces
+g1 = sns.heatmap(df_svi_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 0], cbar=False, annot=True,
+                 vmin=skew_surface_min, vmax=skew_surface_max)
+g2 = sns.heatmap(df_ssvi_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, annot=True,
+                 vmin=skew_surface_min, vmax=skew_surface_max)
+g3 = sns.heatmap(df_essvi_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], cbar=True, annot=True,
+                 vmin=skew_surface_min, vmax=skew_surface_max)
 for g, ax, name in zip([g1, g2, g3], [axs4[0, 0], axs4[0, 1], axs4[0, 2]], ["SVI", "SSVI", "eSSVI"]):
+    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+    ax.set_title(f"{name} Skew", fontsize=title_font_size)
+    g.set_ylabel('')
+    g.set_xlabel('')
+    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
+    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+
+# Plot Fig4: Calibrated Volatility Convexity Surfaces
+g1 = sns.heatmap(df_svi_convexity_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 0], cbar=False, annot=True,
+                 vmin=convexity_surface_min, vmax=convexity_surface_max)
+g2 = sns.heatmap(df_ssvi_convexity_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 1], cbar=False, annot=True,
+                 vmin=convexity_surface_min, vmax=convexity_surface_max)
+g3 = sns.heatmap(df_essvi_convexity_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 2], cbar=True, annot=True,
+                 vmin=convexity_surface_min, vmax=convexity_surface_max)
+for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["SVI", "SSVI", "eSSVI"]):
+    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+    ax.set_title(f"{name} Convexity", fontsize=title_font_size)
+    g.set_ylabel('')
+    g.set_xlabel('')
+    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
+    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+
+# Plot Fig5: Gourion-Lucic Bonds Surface (S_min)
+g1 = sns.heatmap(df_svi_smin_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 0], cbar=False, annot=True,
+                 vmin=smin_surface_min, vmax=smin_surface_max)
+g2 = sns.heatmap(df_ssvi_smin_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 1], cbar=False, annot=True,
+                 vmin=smin_surface_min, vmax=smin_surface_max)
+g3 = sns.heatmap(df_essvi_smin_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 2], cbar=True, annot=True,
+                 vmin=smin_surface_min, vmax=smin_surface_max)
+for g, ax, name in zip([g1, g2, g3], [axs5[0, 0], axs5[0, 1], axs5[0, 2]], ["SVI", "SSVI", "eSSVI"]):
+    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+    ax.set_title(f"{name} S_min", fontsize=title_font_size)
+    g.set_ylabel('')
+    g.set_xlabel('')
+    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
+    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+
+# Plot Fig5: Gourion-Lucic Bonds Surface (S_max)
+g1 = sns.heatmap(df_svi_smax_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 0], cbar=False, annot=True,
+                 vmin=smax_surface_min, vmax=smax_surface_max)
+g2 = sns.heatmap(df_ssvi_smax_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 1], cbar=False, annot=True,
+                 vmin=smax_surface_min, vmax=smax_surface_max)
+g3 = sns.heatmap(df_essvi_smax_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 2], cbar=True, annot=True,
+                 vmin=smax_surface_min, vmax=smax_surface_max)
+for g, ax, name in zip([g1, g2, g3], [axs5[1, 0], axs5[1, 1], axs5[1, 2]], ["SVI", "SSVI", "eSSVI"]):
+    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+    ax.set_title(f"{name} S_max", fontsize=title_font_size)
+    g.set_ylabel('')
+    g.set_xlabel('')
+    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
+    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+
+# Plot Fig6: Skew Arbitrability Surfaces
+g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[0, 0], cbar=False, annot=True,
+                 vmin=-1, vmax=1)
+g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[0, 1], cbar=False, annot=True,
+                 vmin=-1, vmax=1)
+g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[0, 2], cbar=False, annot=True,
+                 vmin=-1, vmax=1)
+for g, ax, name in zip([g1, g2, g3], [axs6[0, 0], axs6[0, 1], axs6[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} Gourion-Lucic Bounds", fontsize=title_font_size)
     g.set_ylabel('')
@@ -893,14 +1209,14 @@ for g, ax, name in zip([g1, g2, g3], [axs4[0, 0], axs4[0, 1], axs4[0, 2]], ["SVI
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Shark-Jaw Arbitrability Surfaces (of most liquid strikes)
-g1 = sns.heatmap(df_svi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 0], cbar=False, vmin=-1, vmax=1,
-                 annot=True)
-g2 = sns.heatmap(df_ssvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 1], cbar=False, vmin=-1, vmax=1,
-                 annot=True)
-g3 = sns.heatmap(df_essvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 2], cbar=False, vmin=-1, vmax=1,
-                 annot=True)
-for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["SVI", "SSVI", "eSSVI"]):
+# Plot Fig6: Shark-Jaw Arbitrability Surfaces
+g1 = sns.heatmap(df_svi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[1, 0], cbar=False, annot=True,
+                 vmin=-1, vmax=1)
+g2 = sns.heatmap(df_ssvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[1, 1], cbar=False, annot=True,
+                 vmin=-1, vmax=1)
+g3 = sns.heatmap(df_essvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[1, 2], cbar=False, annot=True,
+                 vmin=-1, vmax=1)
+for g, ax, name in zip([g1, g2, g3], [axs6[1, 0], axs6[1, 1], axs6[1, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name} Shark-Jaw", fontsize=title_font_size)
     g.set_ylabel('')
@@ -914,9 +1230,11 @@ if not os.path.exists('results'):
 with pd.ExcelWriter("results/Results.xlsx") as writer:
     df.to_excel(writer, sheet_name="Dataframe")
     fig1.savefig('results/Market Data Coherence Verification.png')
-    fig2.savefig('results/Parametric Volatilities Calibration.png')
-    fig3.savefig('results/Volatility Calibration Errors.png')
-    fig4.savefig('results/Arbitograms.png')
+    fig2.savefig('results/Calibration Vol. Curves & Surfaces.png')
+    fig3.savefig('results/Calibrated Vol. Errors.png')
+    fig4.savefig('results/Calibrated Vol. Sensibility.png')
+    fig5.savefig('results/Gourion-Lucic Arbitrability Bounds.png')
+    fig6.savefig('results/Arbitograms.png')
 
 # Timer
 end = time.perf_counter()

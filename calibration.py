@@ -46,7 +46,7 @@ def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list):
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list),
-        tol=1e-6,
+        tol=1e-7,
     )
     final_params = list(result.x)
     return {
@@ -175,7 +175,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list),
-        tol=1e-6,
+        tol=1e-7,
     )
     final_params = list(result.x)
     return {
@@ -317,7 +317,7 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list),
-        tol=1e-6,
+        tol=1e-7,
     )
     final_params = list(result.x)
     return {
@@ -383,7 +383,7 @@ def eSSVI_convexity(strike: float, theta: float, forward: float, maturity: float
     num4 = rho * phi
     den4 = pow(strike, 2)
 
-    numtot = (theta / 2) * (num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4)
+    numtot = (theta / 2) * ((num1 / den1) - (num2 / den2) - (num3 / den3) - (num4 / den4))
     dentot = 2 * maturity * np.sqrt(((theta / 2) * (
             np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
         strike / forward) + 1)) / maturity)
