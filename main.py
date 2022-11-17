@@ -24,7 +24,6 @@ nb_options = []
 nb_options_text = []
 tick_font_size = 8.5
 title_font_size = 11
-use_convexity_bounds = False
 timer_id = 1
 legend_loc = "upper right"
 color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
@@ -238,7 +237,7 @@ start = end
 timer_id = timer_id + 1
 
 # Compute Implied Greeks
-df = utils.compute_greeks(df=df, vol_column="Implied Vol")
+df = utils.compute_greeks(df=df, fwd_col="Forward Perc", vol_col="Implied Vol", strike_col="Strike Perc", maturity_col="Maturity (in Y)", df_col="ZC Perc", type_col="Type", name="Implied")
 
 # Compute Log Forward Moneyness & Implied Total Variance (Implied TV)
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["Forward Perc"])), axis=1)
@@ -438,46 +437,42 @@ df_essvi_convexity_surface, essvi_min, essvi_max = utils.create_surface(df=df, c
 convexity_surface_min = min(svi_min, ssvi_min, essvi_min)
 convexity_surface_max = max(svi_max, ssvi_max, essvi_max)
 
+# Compute Call/Put Bis Mid Price (Call-Put Parity)
+df["Call Bis Type"] = "Call"
+df["Put Bis Type"] = "Put"
+df["Call Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Call" else x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]) + x["Mid Perc"], axis=1)
+df["Put Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Put" else - x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]) + x["Mid Perc"], axis=1)
+
+# Compute Call/Put Bis Greeks
+df = utils.compute_greeks(df=df, fwd_col="Forward Perc", vol_col="Implied Vol", strike_col="Strike Perc",
+                          maturity_col="Maturity (in Y)", df_col="ZC Perc", type_col="Call Bis Type", name="Call Bis")
+df = utils.compute_greeks(df=df, fwd_col="Forward Perc", vol_col="Implied Vol", strike_col="Strike Perc",
+                          maturity_col="Maturity (in Y)", df_col="ZC Perc", type_col="Put Bis Type", name="Put Bis")
+
 # Compute Gourion-Lucic Bounds (Skew)
 for maturity in df["Maturity"].unique():
-    # Types Condition
-    call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
-    put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
-    # S_min (call)
-    df_bis = df[call_cond].copy()
-    df.loc[call_cond, [f"s_min"]] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis[f"Implied Delta Strike"]) / \
-                                                     df_bis[f"Implied Vega"]
-    df.loc[df[call_cond].index[0], f"s_min"] = ((df_bis["Mid Perc"].values[0] - 1) / (
-        df_bis["Strike Perc"].values[0]) - df_bis[f"Implied Delta Strike"].values[0]) / \
-                                                                df_bis[f"Implied Vega"].values[0]
-    # S_max (call)
-    df.loc[call_cond, [f"s_max"]] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
-            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis[f"Implied Delta Strike"]) / \
-                                                     df_bis[f"Implied Vega"]
-    df.loc[df[call_cond].index[-1], f"s_max"] = - df_bis[f"Implied Delta Strike"].values[
-        -1] / df_bis[f"Implied Vega"].values[-1]
-    # S_min (put)
-    df_bis = df[put_cond].copy()
-    df.loc[put_cond, [f"s_min"]] = ((df_bis["Mid Perc"] - df_bis["Mid Perc"].shift(1)) / (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis[f"Implied Delta Strike"]) / \
-                                                    df_bis[f"Implied Vega"]
-    df.loc[df[put_cond].index[0], f"s_min"] = - df_bis[f"Implied Delta Strike"].values[
-        0] / df_bis[f"Implied Vega"].values[0]
-    # S_max (put)
-    df.loc[put_cond, [f"s_max"]] = ((df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"]) / (
-            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis[f"Implied Delta Strike"]) / \
-                                                    df_bis[f"Implied Vega"]
-    df.loc[df[put_cond].index[-1], f"s_max"] = ((1 - df_bis["Mid Perc"].values[-1]) / (
-        df_bis["Strike Perc"].values[-1]) - df_bis[f"Implied Delta Strike"].values[-1]) / \
-                                                                df_bis[f"Implied Vega"].values[-1]
+    cond = (df["Maturity"] == maturity)
+    df_bis = df[cond].copy()
+    # S_min
+    df.loc[cond, [f"s_min"]] = ((df_bis["Call Bis Mid Perc"] - df_bis["Call Bis Mid Perc"].shift(1)) / (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis[f"Call Bis Delta Strike"]) / \
+                                                     df_bis[f"Call Bis Vega"]
+    df.loc[df[cond].index[0], f"s_min"] = ((df_bis["Call Bis Mid Perc"].values[0] - 1) / (
+            df_bis["Strike Perc"].values[0]) - df_bis[f"Call Bis Delta Strike"].values[0]) / \
+                                                     df_bis[f"Call Bis Vega"].values[0]
+    # S_max
+    df.loc[cond, [f"s_max"]] = ((df_bis["Call Bis Mid Perc"].shift(-1) - df_bis["Call Bis Mid Perc"]) / (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis[f"Call Bis Delta Strike"]) / \
+                                                     df_bis[f"Call Bis Vega"]
+    df.loc[df[cond].index[-1], f"s_max"] = - df_bis[f"Call Bis Delta Strike"].values[
+        -1] / df_bis[f"Call Bis Vega"].values[-1]
 
 # Compute Gourion-Lucic Bounds (Convexity)
 for surface in ["SVI", "SSVI", "eSSVI"]:
     df[f"{surface} c_min"] = df.apply(
         lambda x: -(1 / x[f"Implied Vol"]) * (
-                1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x[f"Implied d2"] * x[f"{surface} Skew"]) *
-                  (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x[f"Implied d1"] * x[f"{surface} Skew"]) - (
+                1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x[f"Call Bis d2"] * x[f"{surface} Skew"]) *
+                  (1 / (x["Strike Perc"] * np.sqrt(x["Maturity (in Y)"])) + x[f"Call Bis d1"] * x[f"{surface} Skew"]) - (
                           1 / x["Strike Perc"]) * x[f"{surface} Skew"], axis=1)
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Min Skew Bounds
@@ -511,22 +506,9 @@ cmin_surface_min = min(svi_min, ssvi_min, essvi_min)
 cmin_surface_max = max(svi_max, ssvi_max, essvi_max)
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Bounds Test
-if not use_convexity_bounds:
-    df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
-    df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1,
-                                         axis=1)
-    df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1,
-                                          axis=1)
-else:
-    df["SVI GL Bounds Test"] = df.apply(
-        lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] and x["SVI c_min"] < x[
-            "SVI Convexity"] else 1, axis=1)
-    df["SSVI GL Bounds Test"] = df.apply(
-        lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] and x["SSVI c_min"] < x[
-            "SSVI Convexity"] else 1, axis=1)
-    df["eSSVI GL Bounds Test"] = df.apply(
-        lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] and x["eSSVI c_min"] < x[
-            "eSSVI Convexity"] else 1, axis=1)
+df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
+df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
+df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
 
 # Compute SVI, SSVI & eSSVI Gourion-Lucic Bounds Arbitrability Surface
 df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI GL Bounds Test",
@@ -542,54 +524,48 @@ print(f"{timer_id}/ SVI, SSVI & eSSVI Arbitrability Tested : Gourion-Lucic Bound
 start = end
 timer_id = timer_id + 1
 
-# Compute SVI, SSVI & eSSVI Binary European Up & In (BEUI) Price
-df["SVI BEUI"] = df.apply(lambda x: -(x["Implied Delta Strike"] + x["Implied Vega"] * x["SVI Skew"]), axis=1)
-df["SSVI BEUI"] = df.apply(lambda x: -(x["Implied Delta Strike"] + x["Implied Vega"] * x["SSVI Skew"]), axis=1)
-df["eSSVI BEUI"] = df.apply(lambda x: -(x["Implied Delta Strike"] + x["Implied Vega"] * x["eSSVI Skew"]), axis=1)
+# Compute SVI, SSVI & eSSVI Binary European Up & In Price (BEUI)
+df["SVI BEUI"] = df.apply(lambda x: -(x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["SVI Skew"]), axis=1)
+df["SSVI BEUI"] = df.apply(lambda x: -(x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["SSVI Skew"]), axis=1)
+df["eSSVI BEUI"] = df.apply(lambda x: -(x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["eSSVI Skew"]), axis=1)
 
-# Compute SVI, SSVI & eSSVI Binary European Down & In (BEDI) Price
-df["SVI BEDI"] = df.apply(lambda x: 1 + x["Implied Delta Strike"] + x["Implied Vega"] * x["SVI Skew"], axis=1)
-df["SSVI BEDI"] = df.apply(lambda x: 1 + x["Implied Delta Strike"] + x["Implied Vega"] * x["SSVI Skew"], axis=1)
-df["eSSVI BEDI"] = df.apply(lambda x: 1 + x["Implied Delta Strike"] + x["Implied Vega"] * x["eSSVI Skew"], axis=1)
+# Compute SVI, SSVI & eSSVI Binary European Down & In Price (BEDI)
+df["SVI BEDI"] = 1 - df["SVI BEUI"]
+df["SSVI BEDI"] = 1 - df["SSVI BEUI"]
+df["eSSVI BEDI"] = 1 - df["eSSVI BEUI"]
 
 # Compute SVI, SSVI & eSSVI Shark-Jaw Test
 for maturity in df["Maturity"].unique():
-    # Type Condition
-    call_cond = (df["Maturity"] == maturity) & (df["Type"] == "Call")
-    put_cond = (df["Maturity"] == maturity) & (df["Type"] == "Put")
+    cond = (df["Maturity"] == maturity)
+    df_bis = df[cond].copy()
     # Call Triangles (CT)
-    df_bis = df[call_cond].copy()
-    df.loc[call_cond, ['SVI SJ CT']] = df_bis["Mid Perc"].shift(1) - df_bis["Mid Perc"] - (
-            df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["SVI BEUI"]
-    df.loc[call_cond, ['SSVI SJ CT']] = df_bis["Mid Perc"].shift(1) - df_bis["Mid Perc"] - (
-            df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["SSVI BEUI"]
-    df.loc[call_cond, ['eSSVI SJ CT']] = df_bis["Mid Perc"].shift(1) - df_bis["Mid Perc"] - (
-            df_bis["Strike Perc"].shift(1) - df_bis["Strike Perc"]) * df_bis["eSSVI BEUI"]
+    df.loc[cond, ['SVI SJ CT']] = df_bis["Call Bis Mid Perc"].shift(1) - df_bis["Call Bis Mid Perc"] - (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) * df_bis["SVI BEUI"]
+    df.loc[cond, ['SSVI SJ CT']] = df_bis["Call Bis Mid Perc"].shift(1) - df_bis["Call Bis Mid Perc"] - (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) * df_bis["SSVI BEUI"]
+    df.loc[cond, ['eSSVI SJ CT']] = df_bis["Call Bis Mid Perc"].shift(1) - df_bis["Call Bis Mid Perc"] - (
+            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) * df_bis["eSSVI BEUI"]
     # Put Triangles (PT)
-    df_bis = df[put_cond].copy()
-    df.loc[put_cond, ['SVI SJ PT']] = df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"] - (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(-1)) * df_bis["SVI BEDI"]
-    df.loc[put_cond, ['SSVI SJ PT']] = df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"] - (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(-1)) * df_bis["SSVI BEDI"]
-    df.loc[put_cond, ['eSSVI SJ PT']] = df_bis["Mid Perc"].shift(-1) - df_bis["Mid Perc"] - (
-            df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(-1)) * df_bis["eSSVI BEDI"]
+    df.loc[cond, ['SVI SJ PT']] = df_bis["Put Bis Mid Perc"].shift(-1) - df_bis["Put Bis Mid Perc"] - (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis["SVI BEDI"]
+    df.loc[cond, ['SSVI SJ PT']] = df_bis["Put Bis Mid Perc"].shift(-1) - df_bis["Put Bis Mid Perc"] - (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis["SSVI BEDI"]
+    df.loc[cond, ['eSSVI SJ PT']] = df_bis["Put Bis Mid Perc"].shift(-1) - df_bis["Put Bis Mid Perc"] - (
+            df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis["eSSVI BEDI"]
 
 # Compute SVI, SSVI & eSSVI Shark-Jaw Test
 df["SVI SJ Test"] = df.apply(lambda x: 0
     if (x["SVI SJ CT"] > 0 and x["SVI SJ PT"] > 0) else 0
         if (pd.isna(x["SVI SJ CT"]) and x["SVI SJ PT"] > 0) else 0
-            if (x["SVI SJ CT"] > 0 and pd.isna(x["SVI SJ PT"])) else 0
-                if (pd.isna(x["SVI SJ CT"]) and pd.isna(x["SVI SJ PT"])) else 1, axis=1)
+            if (x["SVI SJ CT"] > 0 and pd.isna(x["SVI SJ PT"])) else 1, axis=1)
 df["SSVI SJ Test"] = df.apply(lambda x: 0
     if (x["SSVI SJ CT"] > 0 and x["SSVI SJ PT"] > 0) else 0
         if (pd.isna(x["SSVI SJ CT"]) and x["SSVI SJ PT"] > 0) else 0
-            if (x["SSVI SJ CT"] > 0 and pd.isna(x["SSVI SJ PT"])) else 0
-                if (pd.isna(x["SSVI SJ CT"]) and pd.isna(x["SSVI SJ PT"])) else 1, axis=1)
+            if (x["SSVI SJ CT"] > 0 and pd.isna(x["SSVI SJ PT"])) else 1, axis=1)
 df["eSSVI SJ Test"] = df.apply(lambda x: 0
     if (x["eSSVI SJ CT"] > 0 and x["eSSVI SJ PT"] > 0) else 0
         if (pd.isna(x["eSSVI SJ CT"]) and x["eSSVI SJ PT"] > 0) else 0
-            if (x["eSSVI SJ CT"] > 0 and pd.isna(x["eSSVI SJ PT"])) else 0
-                if (pd.isna(x["eSSVI SJ CT"]) and pd.isna(x["eSSVI SJ PT"])) else 1, axis=1)
+            if (x["eSSVI SJ CT"] > 0 and pd.isna(x["eSSVI SJ PT"])) else 1, axis=1)
 
 # Compute SVI, SSVI & eSSVI Gourion Shark-Jaw Arbitrability Surface
 df_svi_sj_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI SJ Test",
