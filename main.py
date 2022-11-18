@@ -29,6 +29,7 @@ legend_loc = "upper right"
 color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
               'tab:olive', 'tab:cyan']
 log_forward_moneyness_min, log_forward_moneyness_max = -0.75, 0.75
+log_forward_moneyness_min_bis, log_forward_moneyness_max_bis = -0.75, 0.4
 
 # Set Pandas Display Settings
 pd.set_option('display.max_rows', 100)
@@ -85,7 +86,8 @@ while nb_arbitrage > 0:
         for type in df["Type"].unique():
             df_check = df[(df["Maturity"] == maturity) & (df["Type"] == type)].copy()
             df_check = df_check.sort_values(by="Strike", ascending=True)
-            if len(df_check.index) >= 3:
+            if len(df_check.index) >= 2:
+                # Calls
                 if type == "Call":
                     df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(-1) * \
                                             ((df_check["Strike"].shift(-1) - df_check["Strike"]) /
@@ -108,15 +110,13 @@ while nb_arbitrage > 0:
                         df_select = df_check.loc[
                             [row_id, min(df_check.index[row_id_pos + 1], df_check.index[-1])]]
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
+                # Puts
                 else:
                     df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
                                             (1 + (df_check["Strike"].shift(1) - df_check["Strike"]) / (
-                                                    df_check["Strike"].shift(2) - df_check["Strike"].shift(1))) + \
-                                            df_check["Mid"].shift(2) * ((
-                                                                                df_check["Strike"].shift(1) - df_check[
-                                                                            "Strike"]) / (
-                                                                                df_check["Strike"].shift(2) -
-                                                                                df_check["Strike"].shift(1)))
+                                            df_check["Strike"].shift(2) - df_check["Strike"].shift(1))) + \
+                                            df_check["Mid"].shift(2) * ((df_check["Strike"].shift(1) - df_check[
+                                            "Strike"]) / (df_check["Strike"].shift(2) - df_check["Strike"].shift(1)))
                     df_check["Spread"] = df_check["Mid"] - df_check["Mid"].shift(1)
                     id_with_butterfly_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
                     id_with_spread_arbitrage = list(df_check[df_check["Spread"] <= 0].index)
@@ -266,6 +266,7 @@ SSVI_params = calibration.SSVI_calibration(
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df["Weight"]),
 )
+df['SSVI Params'] = [SSVI_params] * len(df.index)
 
 # Calibrate eSSVI Surface
 eSSVI_params = calibration.eSSVI_calibration(
@@ -274,6 +275,7 @@ eSSVI_params = calibration.eSSVI_calibration(
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df["Weight"]),
 )
+df['eSSVI Params'] = [eSSVI_params] * len(df.index)
 
 # Timer
 end = time.perf_counter()
@@ -727,39 +729,43 @@ axs2[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[0, 2].set_title("eSSVI Implied TV", fontsize=title_font_size)
 
 # Plot Fig2: SVI Calibration (Implied Vol)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+k_list = np.linspace(log_forward_moneyness_min_bis, log_forward_moneyness_max_bis, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     SVI_params = list(df_bis["SVI Params"])[0]
     svi_list = [calibration.SVI(k=k, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                                 m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]) for k in k_list]
     maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward"])[0]
     svi_vol_list = [np.sqrt(tv / maturity) for tv in svi_list]
-    axs2[1, 0].plot(k_list, svi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[1, 0].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied Vol"]), marker="+")
+    strike_list_bis = [np.exp(k) * forward for k in k_list]
+    axs2[1, 0].plot(strike_list_bis, svi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs2[1, 0].scatter(list(df_bis["Strike"]), list(df_bis["Implied Vol"]), marker="+")
 axs2[1, 0].grid()
 axs2[1, 0].legend(loc=legend_loc)
 axs2[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 0].set_title("SVI Implied Vol", fontsize=title_font_size)
 
 # Plot Fig2: SSVI Calibration (Implied Vol)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+k_list = np.linspace(log_forward_moneyness_min_bis, log_forward_moneyness_max_bis, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["SVI ATMF Implied TV"])[0]
     ssvi_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
                                   lambda_=SSVI_params["lambda_"]) for k in k_list]
     maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward"])[0]
     ssvi_vol_list = [np.sqrt(tv / maturity) for tv in ssvi_list]
-    axs2[1, 1].plot(k_list, ssvi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[1, 1].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied Vol"]), marker="+")
+    strike_list_bis = [np.exp(k) * forward for k in k_list]
+    axs2[1, 1].plot(strike_list_bis, ssvi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs2[1, 1].scatter(list(df_bis["Strike"]), list(df_bis["Implied Vol"]), marker="+")
 axs2[1, 1].grid()
 axs2[1, 1].legend(loc=legend_loc)
 axs2[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 1].set_title("SSVI Implied Vol", fontsize=title_font_size)
 
 # Plot Fig2: eSSVI Calibration (Implied Vol)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+k_list = np.linspace(log_forward_moneyness_min_bis, log_forward_moneyness_max_bis, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["SVI ATMF Implied TV"])[0]
@@ -768,8 +774,10 @@ for maturity in df["Maturity"].unique():
                           eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
     maturity = list(df_bis["Maturity (in Y)"])[0]
     essvi_vol_list = [np.sqrt(tv / maturity) for tv in essvi_list]
-    axs2[1, 2].plot(k_list, essvi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[1, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied Vol"]), marker="+")
+    forward = list(df_bis["Forward"])[0]
+    strike_list_bis = [np.exp(k) * forward for k in k_list]
+    axs2[1, 2].plot(strike_list_bis, essvi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
+    axs2[1, 2].scatter(list(df_bis["Strike"]), list(df_bis["Implied Vol"]), marker="+")
 axs2[1, 2].grid()
 axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
