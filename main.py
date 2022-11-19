@@ -244,7 +244,7 @@ df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["F
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
 # Set Minimisation Weight Column
-df["Weight"] = df["Implied Vol"]
+df["Weight"] = df["Implied Vol"] * np.sqrt(df["Volm"])
 
 # Calibrate SVI Curves + Compute SVI ATMF Implied TV
 for maturity in df["Maturity"].unique():
@@ -507,12 +507,12 @@ df_essvi_cmin_surface, essvi_min, essvi_max = utils.create_surface(df=df, column
 cmin_surface_min = min(svi_min, ssvi_min, essvi_min)
 cmin_surface_max = max(svi_max, ssvi_max, essvi_max)
 
-# Compute SVI, SSVI & eSSVI Gourion-Lucic Bounds Test
+# Compute SVI, SSVI & eSSVI Skew Bounds Test
 df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
 df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
 df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
 
-# Compute SVI, SSVI & eSSVI Gourion-Lucic Bounds Arbitrability Surface
+# Compute SVI, SSVI & eSSVI Skew Bounds Arbitrability Surface
 df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI GL Bounds Test",
                                                                   strike_list=strike_list)
 df_ssvi_bounds_arb_surface, ssvi_min, ssvi_max = utils.create_surface(df=df, column_name="SSVI GL Bounds Test",
@@ -522,7 +522,7 @@ df_essvi_bounds_arb_surface, essvi_min, essvi_max = utils.create_surface(df=df, 
 
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ SVI, SSVI & eSSVI Arbitrability Tested : Gourion-Lucic Bounds ({round(end - start, 1)}s)")
+print(f"{timer_id}/ SVI, SSVI & eSSVI Shark-Jaw Tested : Skew Bounds ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -579,7 +579,7 @@ df_essvi_sj_arb_surface, essvi_min, essvi_max = utils.create_surface(df=df, colu
 
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ SVI, SSVI & eSSVI Arbitrability Tested : Shark-Jaw ({round(end - start, 1)}s)")
+print(f"{timer_id}/ SVI, SSVI & eSSVI Shark-Jaw Tested : Call/Put Triangles ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
