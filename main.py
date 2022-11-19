@@ -598,11 +598,11 @@ fig2.suptitle(f"Calibration Results ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
 fig3.suptitle(f"Calibrated Vol. Errors ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
-fig4.suptitle(f"Calibrated Vol. Sensibility ({spot_date.strftime('%d-%b-%Y')})",
+fig4.suptitle(f"Calibrated Vol. Sensibilities ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
-fig5.suptitle(f"Gourion-Lucic Arbitrability Bounds ({spot_date.strftime('%d-%b-%Y')})",
+fig5.suptitle(f"Gourion-Lucic Skew Bounds ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
-fig6.suptitle(f"Arbitograms ({spot_date.strftime('%d-%b-%Y')})",
+fig6.suptitle(f"Shark-Jaw Arbitograms ({spot_date.strftime('%d-%b-%Y')})",
               fontweight='bold', fontsize=12.5)
 
 # Plot Fig1: Number of Options Per Steps
@@ -843,7 +843,7 @@ for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["SVI
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Fig5: Gourion-Lucic Bonds Surface (S_min)
+# Plot Fig5: Gourion-Lucic Skew Bonds Surface (S_min)
 g1 = sns.heatmap(df_svi_smin_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 0], cbar=False, annot=True,
                  vmin=smin_surface_min, vmax=smin_surface_max)
 g2 = sns.heatmap(df_ssvi_smin_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 1], cbar=False, annot=True,
@@ -873,7 +873,7 @@ for g, ax, name in zip([g1, g2, g3], [axs5[1, 0], axs5[1, 1], axs5[1, 2]], ["SVI
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Fig6: Skew Arbitrability Surfaces
+# Plot Fig6: Shark-Jaw Arbitogram Surfaces (Skew Bounds)
 g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[0, 0], cbar=False, annot=True,
                  vmin=-1, vmax=1)
 g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[0, 1], cbar=False, annot=True,
@@ -882,13 +882,13 @@ g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues',
                  vmin=-1, vmax=1)
 for g, ax, name in zip([g1, g2, g3], [axs6[0, 0], axs6[0, 1], axs6[0, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Gourion-Lucic Bounds", fontsize=title_font_size)
+    ax.set_title(f"{name} Skew Bounds", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Fig6: Shark-Jaw Arbitrability Surfaces
+# Plot Fig6: Shark-Jaw Arbitogram Surfaces (Call/Put Triangles)
 g1 = sns.heatmap(df_svi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[1, 0], cbar=False, annot=True,
                  vmin=-1, vmax=1)
 g2 = sns.heatmap(df_ssvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=axs6[1, 1], cbar=False, annot=True,
@@ -897,7 +897,7 @@ g3 = sns.heatmap(df_essvi_sj_arb_surface.values, linewidths=1, cmap='Blues', ax=
                  vmin=-1, vmax=1)
 for g, ax, name in zip([g1, g2, g3], [axs6[1, 0], axs6[1, 1], axs6[1, 2]], ["SVI", "SSVI", "eSSVI"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Shark-Jaw", fontsize=title_font_size)
+    ax.set_title(f"{name} Call/Put Triangles", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
@@ -911,9 +911,9 @@ with pd.ExcelWriter("results/Results.xlsx") as writer:
     fig1.savefig('results/1. Market Data Coherence Verification.png')
     fig2.savefig('results/2. Calibration Results.png')
     fig3.savefig('results/3. Calibrated Vol. Errors.png')
-    fig4.savefig('results/4. Calibrated Vol. Sensibility.png')
-    fig5.savefig('results/5. Gourion-Lucic Arbitrability Bounds.png')
-    fig6.savefig('results/6. Arbitograms.png')
+    fig4.savefig('results/4. Calibrated Vol. Sensibilities.png')
+    fig5.savefig('results/5. Gourion-Lucic Skew Bounds.png')
+    fig6.savefig('results/6. Shark-Jaw Arbitograms.png')
 
 # Timer
 end = time.perf_counter()
