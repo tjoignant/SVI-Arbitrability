@@ -96,7 +96,7 @@ def BS_Delta_Strike(f, k, t, v, df, OptType):
     :param OptType: Either "C", "P", "C+P" or "C-P"
     :return: Delta
     """
-    d2 = BS_d1(f, k, t, v)
+    d2 = BS_d2(f, k, t, v)
     switcher = {
         "C": -df * SNorm(d2),
         "P": df * SNorm(-d2),

@@ -469,6 +469,9 @@ for maturity in df["Maturity"].unique():
     df.loc[df[cond].index[-1], f"s_max"] = - df_bis[f"Call Bis Delta Strike"].values[
         -1] / df_bis[f"Call Bis Vega"].values[-1]
 
+# Compute Skew Spread
+df["Skew Spread"] = df["s_max"] - df["s_min"]
+
 # Compute Gourion-Lucic Bounds (Convexity)
 for surface in ["SVI", "SSVI", "eSSVI"]:
     df[f"{surface} c_min"] = df.apply(
@@ -508,16 +511,16 @@ cmin_surface_min = min(svi_min, ssvi_min, essvi_min)
 cmin_surface_max = max(svi_max, ssvi_max, essvi_max)
 
 # Compute SVI, SSVI & eSSVI Skew Bounds Test
-df["SVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
-df["SSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
-df["eSSVI GL Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
+df["SVI Skew Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SVI Skew"] < x["s_max"] else 1, axis=1)
+df["SSVI Skew Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["SSVI Skew"] < x["s_max"] else 1, axis=1)
+df["eSSVI Skew Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x["eSSVI Skew"] < x["s_max"] else 1, axis=1)
 
 # Compute SVI, SSVI & eSSVI Skew Bounds Arbitrability Surface
-df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI GL Bounds Test",
+df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI Skew Bounds Test",
                                                                   strike_list=strike_list)
-df_ssvi_bounds_arb_surface, ssvi_min, ssvi_max = utils.create_surface(df=df, column_name="SSVI GL Bounds Test",
+df_ssvi_bounds_arb_surface, ssvi_min, ssvi_max = utils.create_surface(df=df, column_name="SSVI Skew Bounds Test",
                                                                      strike_list=strike_list)
-df_essvi_bounds_arb_surface, essvi_min, essvi_max = utils.create_surface(df=df, column_name="eSSVI GL Bounds Test",
+df_essvi_bounds_arb_surface, essvi_min, essvi_max = utils.create_surface(df=df, column_name="eSSVI Skew Bounds Test",
                                                                         strike_list=strike_list)
 
 # Timer
@@ -921,15 +924,25 @@ print(f"{timer_id}/ Results Exported + Graphs Built ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
-# Display Absolute Calibration Arbitrability (ACA) Scores
+# Display Absolute Calibration Arbitrability Scores (Skew Bounds)
 print("\nACA Score (Bounds Test):")
-print(f" - SVI : {round((1 - df['SVI GL Bounds Test'].mean()) * 10, 2)}")
-print(f" - SSVI : {round((1 - df['SSVI GL Bounds Test'].mean()) * 10, 2)}")
-print(f" - eSSVI : {round((1 - df['eSSVI GL Bounds Test'].mean()) * 10, 2)}")
+df_aca = pd.DataFrame(index=df["Pretty Maturity"].unique(), columns=["SVI", "SSVI", "eSSVI"])
+for col in df_aca.columns:
+    for maturity in df["Pretty Maturity"].unique():
+        df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+        df_aca.loc[maturity, f"{col}"] = round((1 - df_bis[f'{col} Skew Bounds Test'].mean()) * 10, 2)
+    df_aca.loc["Overall", f"{col}"] = round((1 - df[f'{col} Skew Bounds Test'].mean()) * 10, 2)
+print(df_aca)
+
+# Display Absolute Calibration Arbitrability Scores (Call/Put Triangles)
 print("\nACA Score (Shark-Jaw Test):")
-print(f" - SVI : {round((1 - df['SVI SJ Test'].mean()) * 10, 2)}")
-print(f" - SSVI : {round((1 - df['SSVI SJ Test'].mean()) * 10, 2)}")
-print(f" - eSSVI : {round((1 - df['eSSVI SJ Test'].mean()) * 10, 2)}")
+df_aca = pd.DataFrame(index=df["Pretty Maturity"].unique(), columns=["SVI", "SSVI", "eSSVI"])
+for col in df_aca.columns:
+    for maturity in df["Pretty Maturity"].unique():
+        df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+        df_aca.loc[maturity, f"{col}"] = round((1 - df_bis[f'{col} SJ Test'].mean()) * 10, 2)
+    df_aca.loc["Overall", f"{col}"] = round((1 - df[f'{col} SJ Test'].mean()) * 10, 2)
+print(df_aca)
 
 # Display Graph
 plt.show()
