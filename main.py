@@ -442,8 +442,12 @@ convexity_surface_max = max(svi_max, ssvi_max, essvi_max)
 # Compute Call/Put Bis Mid Price (Call-Put Parity)
 df["Call Bis Type"] = "Call"
 df["Put Bis Type"] = "Put"
-df["Call Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Call" else x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]) + x["Mid Perc"], axis=1)
-df["Put Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Put" else - x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]) + x["Mid Perc"], axis=1)
+df["Call Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Call" else x["Mid Perc"] + 1 - x["Strike Perc"] * x["ZC Perc"], axis=1)
+df["Put Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Put" else x["Mid Perc"] - 1 + x["Strike Perc"] * x["ZC Perc"], axis=1)
+
+# Compute Undiscounted Call/Put Prices
+df["Call Bis Mid Fwd Perc"] = df["Call Bis Mid Perc"] / df["ZC Perc"]
+df["Put Bis Mid Fwd Perc"] = df["Put Bis Mid Perc"] / df["ZC Perc"]
 
 # Compute Call/Put Bis Greeks
 df = utils.compute_greeks(df=df, fwd_col="Forward Perc", vol_col="Implied Vol", strike_col="Strike Perc",
@@ -456,14 +460,14 @@ for maturity in df["Maturity"].unique():
     cond = (df["Maturity"] == maturity)
     df_bis = df[cond].copy()
     # S_min
-    df.loc[cond, [f"s_min"]] = ((df_bis["Call Bis Mid Perc"] - df_bis["Call Bis Mid Perc"].shift(1)) / (
+    df.loc[cond, [f"s_min"]] = ((df_bis["Call Bis Mid Fwd Perc"] - df_bis["Call Bis Mid Fwd Perc"].shift(1)) / (
             df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) - df_bis[f"Call Bis Delta Strike"]) / \
                                                      df_bis[f"Call Bis Vega"]
-    df.loc[df[cond].index[0], f"s_min"] = ((df_bis["Call Bis Mid Perc"].values[0] - 1) / (
+    df.loc[df[cond].index[0], f"s_min"] = ((df_bis["Call Bis Mid Fwd Perc"].values[0] - 1) / (
             df_bis["Strike Perc"].values[0]) - df_bis[f"Call Bis Delta Strike"].values[0]) / \
                                                      df_bis[f"Call Bis Vega"].values[0]
     # S_max
-    df.loc[cond, [f"s_max"]] = ((df_bis["Call Bis Mid Perc"].shift(-1) - df_bis["Call Bis Mid Perc"]) / (
+    df.loc[cond, [f"s_max"]] = ((df_bis["Call Bis Mid Fwd Perc"].shift(-1) - df_bis["Call Bis Mid Fwd Perc"]) / (
             df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) - df_bis[f"Call Bis Delta Strike"]) / \
                                                      df_bis[f"Call Bis Vega"]
     df.loc[df[cond].index[-1], f"s_max"] = - df_bis[f"Call Bis Delta Strike"].values[
@@ -530,9 +534,9 @@ start = end
 timer_id = timer_id + 1
 
 # Compute SVI, SSVI & eSSVI Binary European Up & In Price (BEUI)
-df["SVI BEUI"] = df.apply(lambda x: -(x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["SVI Skew"]), axis=1)
-df["SSVI BEUI"] = df.apply(lambda x: -(x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["SSVI Skew"]), axis=1)
-df["eSSVI BEUI"] = df.apply(lambda x: -(x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["eSSVI Skew"]), axis=1)
+df["SVI BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["SVI Skew"]), axis=1)
+df["SSVI BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["SSVI Skew"]), axis=1)
+df["eSSVI BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x["eSSVI Skew"]), axis=1)
 
 # Compute SVI, SSVI & eSSVI Binary European Down & In Price (BEDI)
 df["SVI BEDI"] = 1 - df["SVI BEUI"]
@@ -544,18 +548,18 @@ for maturity in df["Maturity"].unique():
     cond = (df["Maturity"] == maturity)
     df_bis = df[cond].copy()
     # Call Triangles (CT)
-    df.loc[cond, ['SVI SJ CT']] = df_bis["Call Bis Mid Perc"].shift(1) - df_bis["Call Bis Mid Perc"] - (
+    df.loc[cond, ['SVI SJ CT']] = df_bis["Call Bis Mid Fwd Perc"].shift(1) - df_bis["Call Bis Mid Fwd Perc"] - (
             df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) * df_bis["SVI BEUI"]
-    df.loc[cond, ['SSVI SJ CT']] = df_bis["Call Bis Mid Perc"].shift(1) - df_bis["Call Bis Mid Perc"] - (
+    df.loc[cond, ['SSVI SJ CT']] = df_bis["Call Bis Mid Fwd Perc"].shift(1) - df_bis["Call Bis Mid Fwd Perc"] - (
             df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) * df_bis["SSVI BEUI"]
-    df.loc[cond, ['eSSVI SJ CT']] = df_bis["Call Bis Mid Perc"].shift(1) - df_bis["Call Bis Mid Perc"] - (
+    df.loc[cond, ['eSSVI SJ CT']] = df_bis["Call Bis Mid Fwd Perc"].shift(1) - df_bis["Call Bis Mid Fwd Perc"] - (
             df_bis["Strike Perc"] - df_bis["Strike Perc"].shift(1)) * df_bis["eSSVI BEUI"]
     # Put Triangles (PT)
-    df.loc[cond, ['SVI SJ PT']] = df_bis["Put Bis Mid Perc"].shift(-1) - df_bis["Put Bis Mid Perc"] - (
+    df.loc[cond, ['SVI SJ PT']] = df_bis["Put Bis Mid Fwd Perc"].shift(-1) - df_bis["Put Bis Mid Fwd Perc"] - (
             df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis["SVI BEDI"]
-    df.loc[cond, ['SSVI SJ PT']] = df_bis["Put Bis Mid Perc"].shift(-1) - df_bis["Put Bis Mid Perc"] - (
+    df.loc[cond, ['SSVI SJ PT']] = df_bis["Put Bis Mid Fwd Perc"].shift(-1) - df_bis["Put Bis Mid Fwd Perc"] - (
             df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis["SSVI BEDI"]
-    df.loc[cond, ['eSSVI SJ PT']] = df_bis["Put Bis Mid Perc"].shift(-1) - df_bis["Put Bis Mid Perc"] - (
+    df.loc[cond, ['eSSVI SJ PT']] = df_bis["Put Bis Mid Fwd Perc"].shift(-1) - df_bis["Put Bis Mid Fwd Perc"] - (
             df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis["eSSVI BEDI"]
 
 # Compute SVI, SSVI & eSSVI Shark-Jaw Test
