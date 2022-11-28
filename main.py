@@ -442,8 +442,8 @@ convexity_surface_max = max(svi_max, ssvi_max, essvi_max)
 # Compute Call/Put Bis Mid Price (Call-Put Parity)
 df["Call Bis Type"] = "Call"
 df["Put Bis Type"] = "Put"
-df["Call Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Call" else x["Mid Perc"] + 1 - x["Strike Perc"] * x["ZC Perc"], axis=1)
-df["Put Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Put" else x["Mid Perc"] - 1 + x["Strike Perc"] * x["ZC Perc"], axis=1)
+df["Call Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Call" else x["Mid Perc"] + 1 - x["ZC Perc"] * x["Strike Perc"], axis=1)
+df["Put Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Put" else x["Mid Perc"] - 1 + x["ZC Perc"] * x["Strike Perc"], axis=1)
 
 # Compute Undiscounted Call/Put Prices
 df["Call Bis Mid Fwd Perc"] = df["Call Bis Mid Perc"] / df["ZC Perc"]
