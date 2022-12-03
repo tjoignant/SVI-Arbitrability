@@ -28,8 +28,8 @@ timer_id = 1
 legend_loc = "upper right"
 color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
               'tab:olive', 'tab:cyan']
-log_forward_moneyness_min, log_forward_moneyness_max = -0.75, 0.75
-log_forward_moneyness_min_bis, log_forward_moneyness_max_bis = -0.75, 0.4
+log_forward_moneyness_min, log_forward_moneyness_max = -0.85, 0.85
+use_durrleman_cond = False
 
 # Set Pandas Display Settings
 pd.set_option('display.max_rows', 100)
@@ -253,6 +253,7 @@ for maturity in df["Maturity"].unique():
         k_list=list(df_mat["Log Forward Moneyness"]),
         mktTotVar_list=list(df_mat["Implied TV"]),
         weights_list=list(df_mat["Weight"]),
+        use_durrleman_cond=use_durrleman_cond,
     )
     df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
     df.loc[df["Maturity"] == maturity, ['SVI ATMF Implied TV']] = \
@@ -265,6 +266,7 @@ SSVI_params = calibration.SSVI_calibration(
     atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df["Weight"]),
+    use_durrleman_cond=use_durrleman_cond,
 )
 df['SSVI Params'] = [SSVI_params] * len(df.index)
 
@@ -274,6 +276,7 @@ eSSVI_params = calibration.eSSVI_calibration(
     atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df["Weight"]),
+    use_durrleman_cond=use_durrleman_cond,
 )
 df['eSSVI Params'] = [eSSVI_params] * len(df.index)
 
@@ -735,60 +738,44 @@ axs2[0, 2].legend(loc=legend_loc)
 axs2[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[0, 2].set_title("eSSVI Implied TV", fontsize=title_font_size)
 
-# Plot Fig2: SVI Calibration (Implied Vol)
-k_list = np.linspace(log_forward_moneyness_min_bis, log_forward_moneyness_max_bis, 400)
+# Plot Fig2: SVI Calibration (Durrleman Condition)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     SVI_params = list(df_bis["SVI Params"])[0]
-    svi_list = [calibration.SVI(k=k, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
-                                m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]) for k in k_list]
-    maturity = list(df_bis["Maturity (in Y)"])[0]
-    forward = list(df_bis["Forward"])[0]
-    svi_vol_list = [np.sqrt(tv / maturity) for tv in svi_list]
-    strike_list_bis = [np.exp(k) * forward for k in k_list]
-    axs2[1, 0].plot(strike_list_bis, svi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[1, 0].scatter(list(df_bis["Strike"]), list(df_bis["Implied Vol"]), marker="+")
+    k_list, g_list = calibration.SVI_Durrleman_Condition(
+        a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"], m_=SVI_params["m_"],
+        sigma_=SVI_params["sigma_"])
+    axs2[1, 0].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 axs2[1, 0].grid()
 axs2[1, 0].legend(loc=legend_loc)
 axs2[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 0].set_title("SVI Implied Vol", fontsize=title_font_size)
+axs2[1, 0].set_title("SVI Durrleman Condition", fontsize=title_font_size)
 
-# Plot Fig2: SSVI Calibration (Implied Vol)
-k_list = np.linspace(log_forward_moneyness_min_bis, log_forward_moneyness_max_bis, 400)
+# Plot Fig2: SSVI Calibration (Durrleman Condition)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["SVI ATMF Implied TV"])[0]
-    ssvi_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
-                                  lambda_=SSVI_params["lambda_"]) for k in k_list]
-    maturity = list(df_bis["Maturity (in Y)"])[0]
-    forward = list(df_bis["Forward"])[0]
-    ssvi_vol_list = [np.sqrt(tv / maturity) for tv in ssvi_list]
-    strike_list_bis = [np.exp(k) * forward for k in k_list]
-    axs2[1, 1].plot(strike_list_bis, ssvi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[1, 1].scatter(list(df_bis["Strike"]), list(df_bis["Implied Vol"]), marker="+")
+    k_list, g_list = calibration.SSVI_Durrleman_Condition(
+        theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"])
+    axs2[1, 1].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 axs2[1, 1].grid()
 axs2[1, 1].legend(loc=legend_loc)
 axs2[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 1].set_title("SSVI Implied Vol", fontsize=title_font_size)
+axs2[1, 1].set_title("SSVI Durrleman Condition", fontsize=title_font_size)
 
-# Plot Fig2: eSSVI Calibration (Implied Vol)
-k_list = np.linspace(log_forward_moneyness_min_bis, log_forward_moneyness_max_bis, 400)
+
+# Plot Fig2: eSSVI Calibration (Durrleman Condition)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["SVI ATMF Implied TV"])[0]
-    essvi_list = [
-        calibration.eSSVI(k=k, theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
-                          eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
-    maturity = list(df_bis["Maturity (in Y)"])[0]
-    essvi_vol_list = [np.sqrt(tv / maturity) for tv in essvi_list]
-    forward = list(df_bis["Forward"])[0]
-    strike_list_bis = [np.exp(k) * forward for k in k_list]
-    axs2[1, 2].plot(strike_list_bis, essvi_vol_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[1, 2].scatter(list(df_bis["Strike"]), list(df_bis["Implied Vol"]), marker="+")
+    k_list, g_list = calibration.eSSVI_Durrleman_Condition(
+        theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
+        eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"])
+    axs2[1, 2].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 axs2[1, 2].grid()
 axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 2].set_title("eSSVI Implied Vol", fontsize=title_font_size)
+axs2[1, 2].set_title("eSSVI Durrleman Condition", fontsize=title_font_size)
 
 # Plot Fig3: Calibrated Volatility Error Surfaces
 g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, annot=True,

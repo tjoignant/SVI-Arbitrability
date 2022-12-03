@@ -3,49 +3,69 @@ import numpy as np
 import scipy.optimize as optimize
 
 
+def Durrleman_Condition(k_list, tot_var_list, log_forward_skew_list, log_forward_convexity_list):
+    return np.power(
+        1 - (np.array(k_list) * np.array(log_forward_skew_list)) / (2 * np.array(tot_var_list)), 2) - \
+           (np.power(np.array(log_forward_skew_list), 2) / 4) * (1 / np.array(tot_var_list) + 1 / 4) + \
+           np.array(log_forward_convexity_list) / 2
+
+
 def SVI(k: float, a_: float, b_: float, rho_: float, m_: float, sigma_: float):
     """
-    :param k: log forward moneyness
-    :param a_: adjusts the vertical deplacement of the smile
-    :param b_: adjust the angle between left and right asymptotes
-    :param rho_: adjust the orientation of the graph
-    :param m_: adjusts the horizontal deplacement of the smile
-    :param sigma_: adjusts the smoothness of the vertex
+    :param k: log forward moneyness (input)
+    :param a_: adjusts the vertical deplacement of the smile (param)
+    :param b_: adjusts the angle between left and right asymptotes (param)
+    :param rho_: adjusts the orientation of the graph (param)
+    :param m_: adjusts the horizontal deplacement of the smile (param)
+    :param sigma_: adjusts the smoothness of the vertex (param)
     :return: total variance
     """
     return a_ + b_ * (rho_ * (k - m_) + math.sqrt(pow(k - m_, 2) + pow(sigma_, 2)))
 
 
-def SVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
+def SVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list,
+                              use_durrleman_cond: bool):
     """
     :param params_list: [a_, b_, rho_, m_, sigma_]
     :param inputs_list: [(k_1), (k_2), (k_3), ...]
     :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: mean squared volatility error (MSVE)
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibration error
     """
-    MSVE = 0
+    # Mean Squared Error (MSE)
+    SVE = 0
     for i in range(0, len(inputs_list)):
-        MSVE = MSVE + weights_list[i] * pow(
+        SVE = SVE + weights_list[i] * pow(
             SVI(k=inputs_list[i][0], a_=params_list[0], b_=params_list[1], rho_=params_list[2], m_=params_list[3],
                 sigma_=params_list[4]) - mktTotVar_list[i], 2)
-    return MSVE / len(inputs_list)
+    MSVE = SVE / len(inputs_list)
+    penality = 0
+    # Penality
+    if use_durrleman_cond:
+        k_list, g_list = SVI_Durrleman_Condition(a_=params_list[0], b_=params_list[1], rho_=params_list[2],
+                                                 m_=params_list[3], sigma_=params_list[4])
+        penality = 0
+        if min(g_list) < 0:
+            penality = 10e5
+    return MSVE + penality
 
 
-def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list):
+def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list, use_durrleman_cond: bool):
     """
     :param k_list: [k_1, k_2, k_3, ...]
     :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: calibrated parameters dict : {a_, b_, rho_, m_, sigma_}
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibrated parameters dict {a_, b_, rho_, m_, sigma_}
     """
-    init_params_list = [0, 0.2, 0, 0, 0.2]
+    init_params_list = [-0.01, 0.05, -0.01, 0.03, 0.3]
     inputs_list = [(k,) for k in k_list]
     result = optimize.minimize(
         SVI_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktTotVar_list, weights_list),
+        args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
         tol=1e-8,
     )
     final_params = list(result.x)
@@ -64,11 +84,11 @@ def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: floa
     :param strike: strike
     :param forward: forward
     :param maturity: maturity
-    :param a_: SVI curve parameter
-    :param b_: SVI curve parameter
-    :param rho_: SVI curve parameter
-    :param m_: SVI curve parameter
-    :param sigma_: SVI curve parameter
+    :param a_: SVI parameter
+    :param b_: SVI parameter
+    :param rho_: SVI parameter
+    :param m_: SVI parameter
+    :param sigma_: SVI parameter
     :return: SVI skew
     """
     num1 = np.log(strike / forward) - m_
@@ -84,17 +104,29 @@ def SVI_skew(strike: float, forward: float, maturity: float, a_: float, b_: floa
     return numtot / dentot
 
 
+def SVI_log_forward_skew(k: float, b_: float, rho_: float, m_: float, sigma_: float):
+    """
+    :param k: log forward moneyness
+    :param b_: SVI parameter
+    :param rho_: SVI parameter
+    :param m_: SVI parameter
+    :param sigma_: SVI parameter
+    :return: SVI log forward skew
+    """
+    return b_ * ((k - m_) / (np.sqrt(pow(k - m_, 2) + pow(sigma_, 2))) + rho_)
+
+
 def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_: float, rho_: float, m_: float,
                   sigma_: float):
     """
     :param strike: strike
     :param forward: forward
     :param maturity: maturity
-    :param a_: SVI curve parameter
-    :param b_: SVI curve parameter
-    :param rho_: SVI curve parameter
-    :param m_: SVI curve parameter
-    :param sigma_: SVI curve parameter
+    :param a_: SVI parameter
+    :param b_: SVI parameter
+    :param rho_: SVI parameter
+    :param m_: SVI parameter
+    :param sigma_: SVI parameter
     :return: SVI convexity
     """
     num1 = - pow(np.log(strike / forward) - m_, 2)
@@ -126,11 +158,43 @@ def SVI_convexity(strike: float, forward: float, maturity: float, a_: float, b_:
     return firstterm - secondterm
 
 
+def SVI_log_forward_convexity(k: float, b_: float, m_: float, sigma_: float):
+    """
+    :param k: log forward moneyness
+    :param b_: SVI parameter
+    :param m_: SVI parameter
+    :param sigma_: SVI parameter
+    :return: SVI log forward convexity
+    """
+    return (b_ * pow(sigma_, 2)) / (pow(pow(m_ - k, 2) + pow(sigma_, 2), 3 / 2))
+
+
+def SVI_Durrleman_Condition(a_: float, b_: float, rho_: float, m_: float, sigma_: float, min_k=-1, max_k=1, nb_k=200):
+    """
+    :param a_: SVI parameter
+    :param b_: SVI parameter
+    :param rho_: SVI parameter
+    :param m_: SVI parameter
+    :param sigma_: SVI parameter
+    :param min_k: first log forward moneyness
+    :param max_k: last log forward moneyness
+    :param nb_k: number of log forward moneyness
+    :return: g list [g1, g2, g3, ...]
+    """
+    k_list = np.linspace(min_k, max_k, nb_k)
+    tot_var_list = [SVI(k=k, a_=a_, b_=b_, rho_=rho_, m_=m_, sigma_=sigma_) for k in k_list]
+    log_forward_skew_list = [SVI_log_forward_skew(k=k, b_=b_, rho_=rho_, m_=m_, sigma_=sigma_) for k in k_list]
+    log_forward_convexity_list = [SVI_log_forward_convexity(k=k, b_=b_, m_=m_, sigma_=sigma_) for k in k_list]
+    return k_list, Durrleman_Condition(k_list=k_list, tot_var_list=tot_var_list,
+                                       log_forward_skew_list=log_forward_skew_list,
+                                       log_forward_convexity_list=log_forward_convexity_list)
+
+
 def SSVI_phi(theta: float, eta_: float, lambda_: float):
     """
     :param theta: ATM total variance
-    :param eta_: curvature function parameter
-    :param lambda_: curvature function parameter
+    :param eta_: curvature parameter
+    :param lambda_: curvature parameter
     :return: curvature function result
     """
     return eta_ * pow(theta, -lambda_)
@@ -141,37 +205,55 @@ def SSVI(k: float, theta: float, rho_: float, eta_: float, lambda_: float):
     :param k: log forward moneyness
     :param theta: ATM total variance
     :param rho_: spot vol constant correlation
-    :param eta_: curvature function parameter
-    :param lambda_: curvature function parameter
+    :param eta_: curvature parameter
+    :param lambda_: curvature parameter
     :return: total variance
     """
     return 0.5 * theta * (1 + rho_ * SSVI_phi(theta, eta_, lambda_) * k +
                           np.sqrt(pow(SSVI_phi(theta, eta_, lambda_) * k + rho_, 2) + 1 - pow(rho_, 2)))
 
 
-def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
+def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list, 
+                               use_durrleman_cond: bool):
     """
     :param params_list: [rho_, eta_, lambda_]
     :param inputs_list: [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
     :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: mean squared volatility error (MSVE)
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibration error
     """
-    MSVE = 0
+    # Mean Squared Error (MSE)
+    SVE = 0
     for i in range(0, len(inputs_list)):
-        MSVE = MSVE + weights_list[i] * pow(
+        SVE = SVE + weights_list[i] * pow(
             SSVI(k=inputs_list[i][0], theta=inputs_list[i][1],
                  rho_=params_list[0], eta_=params_list[1], lambda_=params_list[2]) - mktTotVar_list[i], 2)
-    return MSVE / len(inputs_list)
+    MSVE = SVE / len(inputs_list)
+    # Penality
+    penality = 0
+    if use_durrleman_cond:
+        theta_list = []
+        g_list = []
+        for i in range(0, len(inputs_list)):
+            if inputs_list[i][1] not in theta_list:
+                k_list, g_list = SSVI_Durrleman_Condition(theta=inputs_list[i][1], rho_=params_list[0], eta_=params_list[1],
+                                                          lambda_=params_list[2])
+                theta_list.append(inputs_list[i][1])
+            if min(g_list) < 0:
+                penality = penality + 10e5
+    return MSVE + penality
 
 
-def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list):
+def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list, 
+                     use_durrleman_cond: bool):
     """
     :param k_list: [k_1, k_2, k_3, ...]
     :param atmfTotVar_list: [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
     :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: calibrated parameters dict : {rho_, eta_, lambda_}
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibrated parameters dict {rho_, eta_, lambda_}
     """
     init_params_list = [-0.75, 1, 0.5]
     inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
@@ -179,7 +261,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         SSVI_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktTotVar_list, weights_list),
+        args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
         tol=1e-8,
     )
     final_params = list(result.x)
@@ -193,7 +275,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
 def SSVI_skew(strike: float, theta: float, forward: float, maturity: float, rho_: float, eta_: float, lambda_: float):
     """
     :param strike: strike
-    :param theta: log-forward moneyness
+    :param theta: ATM total variance
     :param forward: forward
     :param maturity: maturity
     :param rho_: SSVI parameter
@@ -203,19 +285,32 @@ def SSVI_skew(strike: float, theta: float, forward: float, maturity: float, rho_
     """
     phi = SSVI_phi(theta, eta_, lambda_)
     num = 0.5 * theta * ((phi * (rho_ + phi * np.log(strike / forward))) / (
-            strike * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1))) + (
-                                 rho_ * phi) / strike)
+            strike * (np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1))) +
+                         (rho_ * phi) / strike)
     den = 2 * maturity * np.sqrt((0.5 * theta * (
             np.sqrt(-pow(rho_, 2) + pow(rho_ + phi * np.log(strike / forward), 2) + 1) + rho_ * phi * np.log(
         strike / forward) + 1)) / maturity)
     return num / den
 
 
+def SSVI_log_forward_skew(k: float, theta: float, rho_: float, eta_: float, lambda_: float):
+    """
+    :param k: log forward moneyness
+    :param theta: ATM total variance
+    :param rho_: SSVI parameter
+    :param eta_: SSVI parameter
+    :param lambda_: SSVI parameter
+    :return: SSVI log forward skew
+    """
+    phi = SSVI_phi(theta, eta_, lambda_)
+    return 0.5 * theta * phi * (rho_ + (rho_ + k * phi) / (np.sqrt(k * phi * (2 * rho_ + k * phi) + 1)))
+
+
 def SSVI_convexity(strike: float, theta: float, forward: float, maturity: float, rho_: float, eta_: float,
                    lambda_: float):
     """
     :param strike: strike
-    :param theta: log-forward moneyness
+    :param theta: ATM total variance
     :param forward: forward
     :param maturity: maturity
     :param rho_: SSVI parameter
@@ -252,12 +347,54 @@ def SSVI_convexity(strike: float, theta: float, forward: float, maturity: float,
     return (numtot / dentot) - (numtot2 / dentot2)
 
 
+def SSVI_log_forward_convexity(k: float, theta: float, rho_: float, eta_: float, lambda_: float):
+    """
+    :param k: log forward moneyness
+    :param theta: ATM total variance
+    :param rho_: SSVI parameter
+    :param eta_: SSVI parameter
+    :param lambda_: SSVI parameter
+    :return: SSVI log forward convexity
+    """
+    phi = SSVI_phi(theta, eta_, lambda_)
+
+    num1 = pow(phi, 2)
+    den1 = np.sqrt(pow(-rho_, 2) + pow(rho_ + k * phi, 2) + 1)
+
+    num2 = pow(phi, 2) * pow(rho_ + k * phi, 2)
+    den2 = pow(pow(-rho_, 2) + pow(rho_ + k * phi, 2) + 1, 3 / 2)
+
+    return 0.5 * theta * (num1 / den1 - num2 / den2)
+
+
+def SSVI_Durrleman_Condition(theta: float, rho_: float, eta_: float, lambda_: float, min_k=-1, max_k=1, nb_k=200):
+    """
+    :param theta: ATM total variance
+    :param rho_: SSVI parameter
+    :param eta_: SSVI parameter
+    :param lambda_: SSVI parameter
+    :param min_k: first log forward moneyness
+    :param max_k: last log forward moneyness
+    :param nb_k: number of log forward moneyness
+    :return: g list [g1, g2, g3, ...]
+    """
+    k_list = np.linspace(min_k, max_k, nb_k)
+    tot_var_list = [SSVI(k=k, theta=theta, rho_=rho_, eta_=eta_, lambda_=lambda_) for k in k_list]
+    log_forward_skew_list = [SSVI_log_forward_skew(k=k, theta=theta, rho_=rho_, eta_=eta_, lambda_=lambda_) for k in
+                             k_list]
+    log_forward_convexity_list = [SSVI_log_forward_convexity(k=k, theta=theta, rho_=rho_, eta_=eta_, lambda_=lambda_)
+                                  for k in k_list]
+    return k_list, Durrleman_Condition(k_list=k_list, tot_var_list=tot_var_list,
+                                       log_forward_skew_list=log_forward_skew_list,
+                                       log_forward_convexity_list=log_forward_convexity_list)
+
+
 def eSSVI_phi(theta: float, eta_: float, lambda_: float):
     """
     :param theta: ATM total variance
-    :param eta_: curvature function parameter
-    :param lambda_: curvature function parameter
-    :return: curvature function result
+    :param eta_: curvature parameter
+    :param lambda_: curvature parameter
+    :return: curvature result
     """
     return eta_ * pow(theta, -lambda_)
 
@@ -265,10 +402,10 @@ def eSSVI_phi(theta: float, eta_: float, lambda_: float):
 def eSSVI_rho(theta: float, a_: float, b_: float, c_: float):
     """
     :param theta: ATM total variance
-    :param a_: spot/vol correlation function parameter
-    :param b_: spot/vol correlation function parameter
-    :param c_: spot/vol correlation function parameter
-    :return: curvature function result
+    :param a_: spot/vol correlation parameter
+    :param b_: spot/vol correlation parameter
+    :param c_: spot/vol correlation parameter
+    :return: curvature result
     """
     return a_ * np.exp(-b_ * theta) + c_
 
@@ -277,11 +414,11 @@ def eSSVI(k: float, theta: float, a_: float, b_: float, c_: float, eta_: float, 
     """
     :param k: log forward moneyness
     :param theta: ATM total variance
-    :param a_: spot/vol correlation function parameter
-    :param b_: spot/vol correlation function parameter
-    :param c_: spot/vol correlation function parameter
-    :param eta_: curvature function parameter
-    :param lambda_: curvature function parameter
+    :param a_: spot/vol correlation parameter
+    :param b_: spot/vol correlation parameter
+    :param c_: spot/vol correlation parameter
+    :param eta_: curvature parameter
+    :param lambda_: curvature parameter
     :return: total variance
     """
     return 0.5 * theta * (
@@ -290,30 +427,48 @@ def eSSVI(k: float, theta: float, a_: float, b_: float, c_: float, eta_: float, 
                     pow(eSSVI_rho(theta, a_, b_, c_), 2)))
 
 
-def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list):
+def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_list: list, weights_list: list, 
+                                use_durrleman_cond: bool):
     """
     :param params_list: [a_, b_, c_, eta_, lambda_]
     :param inputs_list: [(k_1, theta_1), (k_2, theta_2), (k_3, theta_3), ...]
     :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: mean squared volatility error (MSVE)
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibration error
     """
-    MSVE = 0
+    # Mean Squared Error (MSE)
+    SVE = 0
     for i in range(0, len(inputs_list)):
-        MSVE = MSVE + weights_list[i] * pow(
+        SVE = SVE + weights_list[i] * pow(
             eSSVI(k=inputs_list[i][0], theta=inputs_list[i][1],
                   a_=params_list[0], b_=params_list[1], c_=params_list[2], eta_=params_list[3], lambda_=params_list[4])
             - mktTotVar_list[i], 2)
-    return MSVE / len(inputs_list)
+    MSVE = SVE / len(inputs_list)
+    # Penality
+    penality = 0
+    if use_durrleman_cond:
+        theta_list = []
+        g_list = []
+        for i in range(0, len(inputs_list)):
+            if inputs_list[i][1] not in theta_list:
+                k_list, g_list = SSVI_Durrleman_Condition(theta=inputs_list[i][1], rho_=params_list[0], eta_=params_list[1],
+                                                          lambda_=params_list[2])
+                theta_list.append(inputs_list[i][1])
+            if min(g_list) < 0:
+                penality = penality + 10e5
+    return MSVE + penality
 
 
-def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list):
+def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, weights_list: list, 
+                      use_durrleman_cond: bool):
     """
     :param k_list: [k_1, k_2, k_3, ...]
     :param atmfTotVar_list: [atmfTotVar_1, atmfTotVar_2, atmfTotVar_3, ...]
     :param mktTotVar_list: [TotVar_1, TotVar_2, TotVar_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: calibrated parameters dict : {a_, b_, c_, eta_, lambda_}
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibrated parameters dict {a_, b_, c_, eta_, lambda_}
     """
     init_params_list = [-0.75, 0.5, 0, 1, 0.5]
     inputs_list = [(k, atmfTotVar) for k, atmfTotVar in zip(k_list, atmfTotVar_list)]
@@ -321,7 +476,7 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         eSSVI_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktTotVar_list, weights_list),
+        args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
         tol=1e-8,
     )
     final_params = list(result.x)
@@ -338,7 +493,7 @@ def eSSVI_skew(strike: float, theta: float, forward: float, maturity: float, eta
                b_: float, c_: float):
     """
     :param strike: strike
-    :param theta: log-forward moneyness
+    :param theta: ATM total variance
     :param forward: forward
     :param maturity: maturity
     :param eta_: eSSVI parameter
@@ -354,11 +509,28 @@ def eSSVI_skew(strike: float, theta: float, forward: float, maturity: float, eta
                                                                                              pow(rho + phi * np.log(
                                                                                                  strike / forward),
                                                                                                  2) + 1))) + (
-                                     rho * phi) / strike)
+                                 rho * phi) / strike)
     den = 2 * maturity * np.sqrt((0.5 * theta * (
             np.sqrt(-pow(rho, 2) + pow(rho + phi * np.log(strike / forward), 2) + 1) + rho * phi * np.log(
         strike / forward) + 1)) / maturity)
     return num / den
+
+
+def eSSVI_log_forward_skew(k: float, theta: float, eta_: float, lambda_: float, a_: float,
+                           b_: float, c_: float):
+    """
+    :param k: log-forward moneyness
+    :param theta: ATM total variance
+    :param eta_: eSSVI parameter
+    :param lambda_: eSSVI parameter
+    :param a_: eSSVI parameter
+    :param b_: eSSVI parameter
+    :param c_: eSSVI parameter
+    :return: eSSVI log forward skew
+    """
+    rho = eSSVI_rho(theta, a_, b_, c_)
+    phi = eSSVI_phi(theta, eta_, lambda_)
+    return 0.5 * theta * phi * (rho + (rho + k * phi) / (np.sqrt(k * phi * (2 * rho + k * phi) + 1)))
 
 
 def eSSVI_convexity(strike: float, theta: float, forward: float, maturity: float, eta_: float, lambda_: float,
@@ -403,3 +575,52 @@ def eSSVI_convexity(strike: float, theta: float, forward: float, maturity: float
         strike / forward), 2) + 1) + rho * phi * np.log(strike / forward) + 1)) / maturity, 3 / 2)
 
     return (numtot / dentot) - (numtot2 / dentot2)
+
+
+def eSSVI_log_forward_convexity(k: float, theta: float, eta_: float, lambda_: float, a_: float,
+                                b_: float, c_: float):
+    """
+    :param k: log-forward moneyness
+    :param theta: ATM total variance
+    :param eta_: eSSVI parameter
+    :param lambda_: eSSVI parameter
+    :param a_: eSSVI parameter
+    :param b_: eSSVI parameter
+    :param c_: eSSVI parameter
+    :return: eSSVI log forward convexity
+    """
+    rho = eSSVI_rho(theta, a_, b_, c_)
+    phi = eSSVI_phi(theta, eta_, lambda_)
+
+    num1 = pow(phi, 2)
+    den1 = np.sqrt(pow(-rho, 2) + pow(rho + k * phi, 2) + 1)
+
+    num2 = pow(phi, 2) * pow(rho + k * phi, 2)
+    den2 = pow(pow(-rho, 2) + pow(rho + k * phi, 2) + 1, 3 / 2)
+
+    return 0.5 * theta * (num1 / den1 - num2 / den2)
+
+
+def eSSVI_Durrleman_Condition(theta: float, a_: float, b_: float, c_: float, eta_: float, lambda_: float,
+                              min_k=-1, max_k=1, nb_k=200):
+    """
+    :param theta: ATM total variance
+    :param a_: spot/vol correlation parameter
+    :param b_: spot/vol correlation parameter
+    :param c_: spot/vol correlation parameter
+    :param eta_: curvature parameter
+    :param lambda_: curvature parameter
+    :param min_k: first log forward moneyness
+    :param max_k: last log forward moneyness
+    :param nb_k: number of log forward moneyness
+    :return: g list [g1, g2, g3, ...]
+    """
+    k_list = np.linspace(min_k, max_k, nb_k)
+    tot_var_list = [eSSVI(k=k, theta=theta, a_=a_, b_=b_, c_=c_, eta_=eta_, lambda_=lambda_) for k in k_list]
+    log_forward_skew_list = [eSSVI_log_forward_skew(k=k, theta=theta, a_=a_, b_=b_, c_=c_, eta_=eta_, lambda_=lambda_)
+                             for k in k_list]
+    log_forward_convexity_list = [
+        eSSVI_log_forward_convexity(k=k, theta=theta, a_=a_, b_=b_, c_=c_, eta_=eta_, lambda_=lambda_) for k in k_list]
+    return k_list, Durrleman_Condition(k_list=k_list, tot_var_list=tot_var_list,
+                                       log_forward_skew_list=log_forward_skew_list,
+                                       log_forward_convexity_list=log_forward_convexity_list)
