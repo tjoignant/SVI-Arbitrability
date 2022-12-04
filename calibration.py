@@ -639,6 +639,6 @@ def SABR(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float,
     """
     z = (vega_ / alpha_) * pow(f * K, (1-beta_)/2) * np.log(f/K)
     xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1-rho_))
-    num = alpha_ * (1 + T * ((pow(1-beta_, 2)/24) * (pow(alpha_, 2)/pow(f * K, 1 - beta_)) + (1/4) * ((alpha_*beta_*rho_*vega_)/(pow(f*K, (1 - beta_)/2))) + ((2 - pow(rho_, 2))/24) * pow(vega_, 2) ))
-    den = (pow(f*K, (1-beta_)/2)) * (1 + pow(1-beta_, 2) * pow(np.log(f/K), 2) / 24 + pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920)
+    num = alpha_ * (1 + T * ((pow(1-beta_, 2)/24) * (pow(alpha_, 2)/pow(f * K, 1 - beta_)) + (1/4) * ((alpha_*beta_*rho_*vega_)/(pow(f*K, (1 - beta_)/2))) + ((2 - 3*pow(rho_, 2))/24) * pow(vega_, 2)))
+    den = (pow(f*K, (1-beta_)/2)) * (1 + (pow(1-beta_, 2) * pow(np.log(f/K), 2)) / 24 + pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920)
     return (z/xhi) * num / den

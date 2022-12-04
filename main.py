@@ -45,6 +45,7 @@ for file in sorted((f for f in os.listdir(folder) if not f.startswith(".")), key
         df_list.append(pd.read_excel(f"{folder}/{file}", header=0, engine='openpyxl').dropna())
 df = pd.concat(df_list)
 
+
 # Set Spot Value & Date
 df["Spot"] = spot
 df["Spot Date"] = spot_date
