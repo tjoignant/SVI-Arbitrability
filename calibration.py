@@ -202,11 +202,11 @@ def SSVI_phi(theta: float, eta_: float, lambda_: float):
 
 def SSVI(k: float, theta: float, rho_: float, eta_: float, lambda_: float):
     """
-    :param k: log forward moneyness
-    :param theta: ATM total variance
-    :param rho_: spot vol constant correlation
-    :param eta_: curvature parameter
-    :param lambda_: curvature parameter
+    :param k: log forward moneyness (input)
+    :param theta: ATM total variance (input)
+    :param rho_: spot vol constant correlation (param)
+    :param eta_: curvature function parameter (param)
+    :param lambda_: curvature function parameter (param)
     :return: total variance
     """
     return 0.5 * theta * (1 + rho_ * SSVI_phi(theta, eta_, lambda_) * k +
@@ -359,10 +359,10 @@ def SSVI_log_forward_convexity(k: float, theta: float, rho_: float, eta_: float,
     phi = SSVI_phi(theta, eta_, lambda_)
 
     num1 = pow(phi, 2)
-    den1 = np.sqrt(pow(-rho_, 2) + pow(rho_ + k * phi, 2) + 1)
+    den1 = np.sqrt(-pow(rho_, 2) + pow(rho_ + k * phi, 2) + 1)
 
     num2 = pow(phi, 2) * pow(rho_ + k * phi, 2)
-    den2 = pow(pow(-rho_, 2) + pow(rho_ + k * phi, 2) + 1, 3 / 2)
+    den2 = pow(-pow(rho_, 2) + pow(rho_ + k * phi, 2) + 1, 3 / 2)
 
     return 0.5 * theta * (num1 / den1 - num2 / den2)
 
@@ -412,13 +412,13 @@ def eSSVI_rho(theta: float, a_: float, b_: float, c_: float):
 
 def eSSVI(k: float, theta: float, a_: float, b_: float, c_: float, eta_: float, lambda_: float):
     """
-    :param k: log forward moneyness
-    :param theta: ATM total variance
-    :param a_: spot/vol correlation parameter
-    :param b_: spot/vol correlation parameter
-    :param c_: spot/vol correlation parameter
-    :param eta_: curvature parameter
-    :param lambda_: curvature parameter
+    :param k: log forward moneyness (input)
+    :param theta: ATM total variance (input)
+    :param a_: spot/vol correlation function parameter (param)
+    :param b_: spot/vol correlation function parameter (param)
+    :param c_: spot/vol correlation function parameter (param)
+    :param eta_: curvature function parameter (param)
+    :param lambda_: curvature function parameter (param)
     :return: total variance
     """
     return 0.5 * theta * (
@@ -593,10 +593,10 @@ def eSSVI_log_forward_convexity(k: float, theta: float, eta_: float, lambda_: fl
     phi = eSSVI_phi(theta, eta_, lambda_)
 
     num1 = pow(phi, 2)
-    den1 = np.sqrt(pow(-rho, 2) + pow(rho + k * phi, 2) + 1)
+    den1 = np.sqrt(-pow(rho, 2) + pow(rho + k * phi, 2) + 1)
 
     num2 = pow(phi, 2) * pow(rho + k * phi, 2)
-    den2 = pow(pow(-rho, 2) + pow(rho + k * phi, 2) + 1, 3 / 2)
+    den2 = pow(-pow(rho, 2) + pow(rho + k * phi, 2) + 1, 3 / 2)
 
     return 0.5 * theta * (num1 / den1 - num2 / den2)
 
@@ -624,3 +624,21 @@ def eSSVI_Durrleman_Condition(theta: float, a_: float, b_: float, c_: float, eta
     return k_list, Durrleman_Condition(k_list=k_list, tot_var_list=tot_var_list,
                                        log_forward_skew_list=log_forward_skew_list,
                                        log_forward_convexity_list=log_forward_convexity_list)
+
+
+def SABR(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float, vega_: float):
+    """
+    :param f: forward (input)
+    :param K: strike (input)
+    :param T: maturity (input)
+    :param alpha_: ... (param)
+    :param beta_: ... (param)
+    :param rho_: spot vol constant correlation (param)
+    :param vega_: ... (param)
+    :return: volatility
+    """
+    z = (vega_ / alpha_) * pow(f * K, (1-beta_)/2) * np.log(f/K)
+    xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1-rho_))
+    num = alpha_ * (1 + T * ((pow(1-beta_, 2)/24) * (pow(alpha_, 2)/pow(f * K, 1 - beta_)) + (1/4) * ((alpha_*beta_*rho_*vega_)/(pow(f*K, (1 - beta_)/2))) + ((2 - pow(rho_, 2))/24) * pow(vega_, 2) ))
+    den = (pow(f*K, (1-beta_)/2)) * (1 + pow(1-beta_, 2) * pow(np.log(f/K), 2) / 24 + pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920)
+    return (z/xhi) * num / den
