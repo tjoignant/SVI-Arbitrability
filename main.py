@@ -245,7 +245,7 @@ df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["F
 df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 
 # Set Minimisation Weight Column
-df["Weight"] = df["Implied Vol"] * np.sqrt(df["Volm"])
+df["Weight"] = df["Implied Vol"]
 
 # Calibrate SVI Curves + Compute SVI ATMF Implied TV
 for maturity in df["Maturity"].unique():
