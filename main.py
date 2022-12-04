@@ -69,7 +69,7 @@ df["Pretty Maturity"] = df["Maturity"].apply(lambda x: x.strftime("%b-%y"))
 
 # Timer
 end = time.perf_counter()
-print(f"\n{timer_id}/ Datas Loaded & Parsed ({round(end - start, 1)}s)")
+print(f"\n{timer_id}/ Market Datas Loaded & Parsed ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -154,7 +154,7 @@ while nb_arbitrage > 0:
 
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ Arbitrage Coherence Checked ({round(end - start, 1)}s)")
+print(f"{timer_id}/ Arbitrages Removed : Calendar Spread + Butterfly ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -198,12 +198,6 @@ nb_options_text.append("Forward+ZC")
 # Remove ITM Options
 df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put") & (df["Strike"] <= spot))].copy()
 
-# Timer
-end = time.perf_counter()
-print(f"{timer_id}/ Market Implied Forward & ZC Computed ({round(end - start, 1)}s)")
-start = end
-timer_id = timer_id + 1
-
 # Add Remaining Nb Options
 nb_options.append(len(df.index))
 nb_options_text.append("ITM Opt.")
@@ -233,7 +227,7 @@ df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
 
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ Market Implied Volatilities Computed ({round(end - start, 1)}s)")
+print(f"{timer_id}/ Implied Forward, ZC & Volatilities Computed ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
