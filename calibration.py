@@ -631,10 +631,10 @@ def SABR(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float,
     :param f: forward (input)
     :param K: strike (input)
     :param T: maturity (input)
-    :param alpha_: ... (param)
-    :param beta_: ... (param)
+    :param alpha_: instantaneous vol (param)
+    :param beta_: CEV component for forward rate (param)
     :param rho_: spot vol constant correlation (param)
-    :param vega_: ... (param)
+    :param vega_: constant vol of vol (param)
     :return: volatility
     """
     z = (vega_ / alpha_) * pow(f * K, (1-beta_)/2) * np.log(f/K)
@@ -642,3 +642,48 @@ def SABR(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float,
     num = alpha_ * (1 + T * ((pow(1-beta_, 2)/24) * (pow(alpha_, 2)/pow(f * K, 1 - beta_)) + (1/4) * ((alpha_*beta_*rho_*vega_)/(pow(f*K, (1 - beta_)/2))) + ((2 - 3*pow(rho_, 2))/24) * pow(vega_, 2)))
     den = (pow(f*K, (1-beta_)/2)) * (1 + (pow(1-beta_, 2) * pow(np.log(f/K), 2)) / 24 + pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920)
     return (z/xhi) * num / den
+
+
+def SABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list, weights_list: list):
+    """
+    :param params_list: [alpha_, beta_, rho_, vega_]
+    :param inputs_list: [(f_1, K_1, T_1), (f_2, K_2, T_2), (f_3, K_3, T_3), ...]
+    :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :return: calibration error
+    """
+    # Mean Squared Error (MSE)
+    SVE = 0
+    for i in range(0, len(inputs_list)):
+        SVE = SVE + weights_list[i] * pow(
+            SABR(f=inputs_list[i][0], K=inputs_list[i][1], T=inputs_list[i][2], alpha_=params_list[0],
+                 beta_=params_list[1], rho_=params_list[2], vega_=params_list[3]) - mktImpVol_list[i], 2)
+    MSVE = SVE / len(inputs_list)
+    return MSVE
+
+
+def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: list, weights_list: list):
+    """
+    :param f_list: [f_1, f_2, f_3, ...]
+    :param K_list: [K_1, K_2, K_3, ...]
+    :param T_list: [T_1, T_2, T_3, ...]
+    :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :return: calibrated parameters dict {alpha_, beta_, rho_, vega_}
+    """
+    init_params_list = [0.01, 0.01, 0.01, 0.01]
+    inputs_list = [(f, K, T) for f, K, T in zip(f_list, K_list, T_list)]
+    result = optimize.minimize(
+        SABR_minimisation_function,
+        x0=init_params_list,
+        method='nelder-mead',
+        args=(inputs_list, mktImpVol_list, weights_list),
+        tol=1e-8,
+    )
+    final_params = list(result.x)
+    return {
+        "alpha_": final_params[0],
+        "beta_": final_params[1],
+        "rho_": final_params[2],
+        "vega_": final_params[3],
+    }
