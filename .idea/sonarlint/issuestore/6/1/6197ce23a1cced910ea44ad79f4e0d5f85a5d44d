@@ -1,0 +1,33 @@
+
+hpython:S1542"KRename function "BS_d1" to match the regular expression ^[a-z_][a-z0-9_]*$.(ç×ÛÙüÿÿÿÿ
+hpython:S1542"KRename function "BS_d2" to match the regular expression ^[a-z_][a-z0-9_]*$.(ºÁÃàşÿÿÿÿ
+ppython:S1542"SRename function "NormalDistrib" to match the regular expression ^[a-z_][a-z0-9_]*$.(Û§í§ıÿÿÿÿ
+cpython:S1542("KRename function "SNorm" to match the regular expression ^[a-z_][a-z0-9_]*$.(ôĞÛˆ
+jpython:S1170"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(ù…“Ú
+fpython:S15420"NRename function "BS_Price" to match the regular expression ^[a-z_][a-z0-9_]*$.(ù…“Ú
+ipython:S117E"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(±öÛI
+epython:S1542E"NRename function "BS_Delta" to match the regular expression ^[a-z_][a-z0-9_]*$.(±öÛI
+jpython:S117Y"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÎÄÕş
+fpython:S1542Y"NRename function "BS_Theta" to match the regular expression ^[a-z_][a-z0-9_]*$.(ÎÄÕş
+Lpython:S2190Y"4Add a way to break out of this function's recursion.(ÎÄÕş
+jpython:S117o"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(±Ò…ı
+fpython:S1542o"NRename function "BS_Gamma" to match the regular expression ^[a-z_][a-z0-9_]*$.(±Ò…ı
+kpython:S117„"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(”¶Šù
+fpython:S1542„"MRename function "BS_Vega" to match the regular expression ^[a-z_][a-z0-9_]*$.(”¶Šù
+ppython:S117™"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(âÿşÿÿÿÿ
+lpython:S1542™"NRename function "BS_Vanna" to match the regular expression ^[a-z_][a-z0-9_]*$.(âÿşÿÿÿÿ
+ppython:S117¯"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(ğèÉ¤ùÿÿÿÿ
+lpython:S1542¯"NRename function "BS_Volga" to match the regular expression ^[a-z_][a-z0-9_]*$.(ğèÉ¤ùÿÿÿÿ
+qpython:S117Å"TRename this parameter "MktPrice" to match the regular expression ^[_a-z][a-z0-9_]*$.(¹ÈïÙüÿÿÿÿ
+ppython:S117Å"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(¹ÈïÙüÿÿÿÿ
+spython:S1542Å"URename function "BS_IV_Dichotomy" to match the regular expression ^[a-z_][a-z0-9_]*$.(¹ÈïÙüÿÿÿÿ
+qpython:S117Ş"TRename this parameter "MktPrice" to match the regular expression ^[_a-z][a-z0-9_]*$.(÷´×Èşÿÿÿÿ
+ppython:S117Ş"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(÷´×Èşÿÿÿÿ
+xpython:S1542Ş"ZRename function "BS_IV_Newton_Raphson" to match the regular expression ^[a-z_][a-z0-9_]*$.(÷´×Èşÿÿÿÿ
+qpython:S117ö"TRename this parameter "MktPrice" to match the regular expression ^[_a-z][a-z0-9_]*$.(¢¹ö•şÿÿÿÿ
+ppython:S117ö"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(¢¹ö•şÿÿÿÿ
+opython:S1542ö"QRename function "BS_IV_Brent" to match the regular expression ^[a-z_][a-z0-9_]*$.(¢¹ö•şÿÿÿÿ
+rpython:S3776ö"TRefactor this function to reduce its Cognitive Complexity from 30 to the 15 allowed.(¢¹ö•şÿÿÿÿ
+qpython:S117À"TRename this parameter "MktPrice" to match the regular expression ^[_a-z][a-z0-9_]*$.(ğ•Æøÿÿÿÿ
+ppython:S117À"SRename this parameter "OptType" to match the regular expression ^[_a-z][a-z0-9_]*$.(ğ•Æøÿÿÿÿ
+xpython:S1542À"ZRename function "BS_IV_Nelder_Mead_1D" to match the regular expression ^[a-z_][a-z0-9_]*$.(ğ•Æøÿÿÿÿ

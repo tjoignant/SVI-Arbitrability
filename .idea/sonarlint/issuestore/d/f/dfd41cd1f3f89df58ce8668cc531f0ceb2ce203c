@@ -1,0 +1,18 @@
+
+apython:S1542"IRename function "SVI" to match the regular expression ^[a-z_][a-z0-9_]*$.(ÕË§
+vpython:S117"ZRename this parameter "mktTotVar_list" to match the regular expression ^[_a-z][a-z0-9_]*$.(¥¹åŠüÿÿÿÿ
+|python:S1542"_Rename function "SVI_minimisation_function" to match the regular expression ^[a-z_][a-z0-9_]*$.(¥¹åŠüÿÿÿÿ
+vpython:S117#"ZRename this parameter "mktTotVar_list" to match the regular expression ^[_a-z][a-z0-9_]*$.(‚ğÖŸùÿÿÿÿ
+rpython:S1542#"URename function "SVI_calibration" to match the regular expression ^[a-z_][a-z0-9_]*$.(‚ğÖŸùÿÿÿÿ
+kpython:S1542<"NRename function "SSVI_phi" to match the regular expression ^[a-z_][a-z0-9_]*$.(¬ŒŠÿÿÿÿÿ
+gpython:S1542F"JRename function "SSVI" to match the regular expression ^[a-z_][a-z0-9_]*$.(¶¥‘şÿÿÿÿ
+vpython:S117T"ZRename this parameter "mktTotVar_list" to match the regular expression ^[_a-z][a-z0-9_]*$.(—ûÇ©ıÿÿÿÿ
+}python:S1542T"`Rename function "SSVI_minimisation_function" to match the regular expression ^[a-z_][a-z0-9_]*$.(—ûÇ©ıÿÿÿÿ
+wpython:S117d"[Rename this parameter "atmfTotVar_list" to match the regular expression ^[_a-z][a-z0-9_]*$.(¢‚Ìµıÿÿÿÿ
+vpython:S117d"ZRename this parameter "mktTotVar_list" to match the regular expression ^[_a-z][a-z0-9_]*$.(¢‚Ìµıÿÿÿÿ
+spython:S1542d"VRename function "SSVI_calibration" to match the regular expression ^[a-z_][a-z0-9_]*$.(¢‚Ìµıÿÿÿÿ
+gpython:S1542|"ORename function "eSSVI_phi" to match the regular expression ^[a-z_][a-z0-9_]*$.(‘§¨ƒ
+hpython:S1542†"ORename function "eSSVI_rho" to match the regular expression ^[a-z_][a-z0-9_]*$.(ô·äË
+ipython:S1542‘"KRename function "eSSVI" to match the regular expression ^[a-z_][a-z0-9_]*$.(õ†üúıÿÿÿÿ
+ypython:S117¡"ZRename this parameter "mktTotVar_list" to match the regular expression ^[_a-z][a-z0-9_]*$.(Õí¾÷8·Ô«˜Å0
+python:S1542¡"aRename function "eSSVI_minimisation_function" to match the regular expression ^[a-z_][a-z0-9_]*$.(Õí¾÷8Õ‚¬˜Å0
