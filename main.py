@@ -284,6 +284,7 @@ for maturity in df["Maturity"].unique():
         T_list=list(df_mat["Maturity (in Y)"]),
         mktImpVol_list=list(df_mat["Implied Vol"]),
         weights_list=list(df_mat["Weight"]),
+        use_durrleman_cond=use_durrleman_cond,
     )
     df.loc[df["Maturity"] == maturity, ['SABR Params']] = [SABR_params] * len(df_mat.index)
 
@@ -697,7 +698,6 @@ axs2[1, 1].legend(loc=legend_loc)
 axs2[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 1].set_title("SSVI Durrleman Condition", fontsize=title_font_size)
 
-
 # Plot Fig2: eSSVI Calibration (Durrleman Condition)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
@@ -710,6 +710,20 @@ axs2[1, 2].grid()
 axs2[1, 2].legend(loc=legend_loc)
 axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
 axs2[1, 2].set_title("eSSVI Durrleman Condition", fontsize=title_font_size)
+
+# Plot Fig2: SABR Calibration (Durrleman Condition)
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    SABR_params = list(df_bis["SABR Params"])[0]
+    maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    k_list, g_list = calibration.SABR_Durrleman_Condition(f=forward, T=maturity, alpha_=SABR_params["alpha_"],
+                                                          rho_=SABR_params["rho_"], nu_=SABR_params["nu_"])
+    axs2[1, 3].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+axs2[1, 3].grid()
+axs2[1, 3].legend(loc=legend_loc)
+axs2[1, 3].tick_params(axis='both', which='major', labelsize=tick_font_size)
+axs2[1, 3].set_title("SABR Durrleman Condition", fontsize=title_font_size)
 
 # Plot Fig3: Calibrated Volatility Error Surfaces
 g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, annot=True,

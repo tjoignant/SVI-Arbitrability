@@ -66,7 +66,7 @@ def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list, use_
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
-        tol=1e-10,
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {
@@ -232,8 +232,8 @@ def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_l
     MSVE = SVE / len(inputs_list)
     # Penality (Gatheral/Jacquier)
     penality = 0
-    # Calendar Spread Arbitrage
     theta_list = sorted(list(set([inputs_list[i][1] for i in range(0, len(inputs_list))])))
+    # Calendar Spread Arbitrage
     for i in range(1, len(theta_list)):
         diff = theta_list[i] * SSVI_phi(theta=theta_list[i], eta_=params_list[1], lambda_=params_list[2]) - \
                     theta_list[i-1] * SSVI_phi(theta=theta_list[i-1], eta_=params_list[1], lambda_=params_list[2])
@@ -247,13 +247,9 @@ def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_l
             penality = penality + 10e5
     # Penality (Durrleman)
     if use_durrleman_cond:
-        theta_list = []
-        g_list = []
-        for i in range(0, len(inputs_list)):
-            if inputs_list[i][1] not in theta_list:
-                k_list, g_list = SSVI_Durrleman_Condition(theta=inputs_list[i][1], rho_=params_list[0], eta_=params_list[1],
-                                                          lambda_=params_list[2])
-                theta_list.append(inputs_list[i][1])
+        for theta in theta_list:
+            k_list, g_list = SSVI_Durrleman_Condition(theta=theta, rho_=params_list[0], eta_=params_list[1],
+                                                      lambda_=params_list[2])
             if min(g_list) < 0:
                 penality = penality + 10e5
     return MSVE + penality
@@ -276,7 +272,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
-        tol=1e-10,
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {
@@ -461,8 +457,8 @@ def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_
     MSVE = SVE / len(inputs_list)
     # Penality (Gatheral/Jacquier)
     penality = 0
-    # Calendar Spread Arbitrage
     theta_list = sorted(list(set([inputs_list[i][1] for i in range(0, len(inputs_list))])))
+    # Calendar Spread Arbitrage
     for i in range(1, len(theta_list)):
         diff = theta_list[i] * eSSVI_phi(theta=theta_list[i], eta_=params_list[3], lambda_=params_list[4]) - \
                     theta_list[i-1] * eSSVI_phi(theta=theta_list[i-1], eta_=params_list[3], lambda_=params_list[4])
@@ -478,13 +474,9 @@ def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_
     # Penality (Durrleman)
     penality = 0
     if use_durrleman_cond:
-        theta_list = []
-        g_list = []
-        for i in range(0, len(inputs_list)):
-            if inputs_list[i][1] not in theta_list:
-                k_list, g_list = SSVI_Durrleman_Condition(theta=inputs_list[i][1], rho_=params_list[0], eta_=params_list[1],
-                                                          lambda_=params_list[2])
-                theta_list.append(inputs_list[i][1])
+        for theta in theta_list:
+            k_list, g_list = eSSVI_Durrleman_Condition(theta=theta, a_=params_list[0], b_=params_list[1],
+                                                       c_=params_list[2], eta_=params_list[3], lambda_=params_list[4])
             if min(g_list) < 0:
                 penality = penality + 10e5
     return MSVE + penality
@@ -507,7 +499,7 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
-        tol=1e-10,
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {
@@ -671,12 +663,14 @@ def SABR(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: float):
     return alpha_ * (1 + T * (rho_ * nu_ * alpha_ / 4 + (2 - 3 * pow(rho_, 2)) / 24 * pow(nu_, 2))) * (z/xhi)
 
 
-def SABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list, weights_list: list):
+def SABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list, weights_list: list,
+                               use_durrleman_cond: bool):
     """
     :param params_list: [alpha_, rho_, nu_]
     :param inputs_list: [(f_1, K_1, T_1), (f_2, K_2, T_2), (f_3, K_3, T_3), ...]
     :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
     :return: calibration error
     """
     # Mean Squared Error (MSE)
@@ -686,16 +680,30 @@ def SABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_l
             SABR(f=inputs_list[i][0], K=inputs_list[i][1], T=inputs_list[i][2], alpha_=params_list[0],
                  rho_=params_list[1], nu_=params_list[2]) - mktImpVol_list[i], 2)
     MSVE = SVE / len(inputs_list)
-    return MSVE
+    # Penality (Durrleman)
+    penality = 0
+    if use_durrleman_cond:
+        theta_list = []
+        g_list = []
+        for i in range(0, len(inputs_list)):
+            if inputs_list[i][1] not in theta_list:
+                k_list, g_list = SABR_Durrleman_Condition(f=inputs_list[i][0], T=inputs_list[i][2],
+                                                          alpha_=params_list[0], rho_=params_list[1], nu_=params_list[2])
+                theta_list.append(inputs_list[i][1])
+            if min(g_list) < 0:
+                penality = penality + 10e5
+    return MSVE + penality
 
 
-def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: list, weights_list: list):
+def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: list, weights_list: list,
+                     use_durrleman_cond: bool):
     """
     :param f_list: [f_1, f_2, f_3, ...]
     :param K_list: [K_1, K_2, K_3, ...]
     :param T_list: [T_1, T_2, T_3, ...]
     :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
     :return: calibrated parameters dict {alpha_, rho_, nu_}
     """
     init_params_list = [0.25, -0.4, 4]
@@ -704,8 +712,8 @@ def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: l
         SABR_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
-        args=(inputs_list, mktImpVol_list, weights_list),
-        tol=1e-10,
+        args=(inputs_list, mktImpVol_list, weights_list, use_durrleman_cond),
+        tol=1e-8,
     )
     final_params = list(result.x)
     return {
@@ -744,3 +752,33 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: flo
     return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
     # return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
     # return - 0.5 * (- rho_ * nu_ / alpha_) * np.log(K/f)
+
+
+def SABR_Durrleman_Condition(f: float, T: float, alpha_: float, rho_: float, nu_: float, min_k=-1, max_k=1, nb_k=200):
+    """
+    :param f: forward (input)
+    :param T: maturity (input)
+    :param alpha_: instantaneous vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param nu_: constant vol of vol (param)
+    :param min_k: first log forward moneyness
+    :param max_k: last log forward moneyness
+    :param nb_k: number of log forward moneyness
+    :return: g list [g1, g2, g3, ...]
+    """
+    k_list = np.linspace(min_k, max_k, nb_k)
+    vol_list = [SABR(f=f, K=f*np.exp(k), T=T, alpha_=alpha_, rho_=rho_, nu_=nu_) for k in k_list]
+    tot_var_list = [T * pow(vol, 2) for vol in vol_list]
+    log_forward_skew_list = []
+    log_forward_convexity_list = []
+    new_tot_var_list = []
+    new_k_list = []
+    k_step = (max_k - min_k) / nb_k
+    for i in range(1, len(tot_var_list) - 1):
+        new_k_list.append(k_list[i])
+        new_tot_var_list.append(tot_var_list[i])
+        log_forward_skew_list.append((tot_var_list[i+1] - tot_var_list[i-1]) / (2 * k_step))
+        log_forward_convexity_list.append((tot_var_list[i + 1] - 2 * tot_var_list[i] + tot_var_list[i-1]) / pow(k_step, 2))
+    return new_k_list, Durrleman_Condition(k_list=new_k_list, tot_var_list=new_tot_var_list,
+                                           log_forward_skew_list=log_forward_skew_list,
+                                           log_forward_convexity_list=log_forward_convexity_list)
