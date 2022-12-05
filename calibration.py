@@ -41,7 +41,7 @@ def SVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_li
                 sigma_=params_list[4]) - mktTotVar_list[i], 2)
     MSVE = SVE / len(inputs_list)
     penality = 0
-    # Penality
+    # Penality (Durrleman)
     if use_durrleman_cond:
         k_list, g_list = SVI_Durrleman_Condition(a_=params_list[0], b_=params_list[1], rho_=params_list[2],
                                                  m_=params_list[3], sigma_=params_list[4])
@@ -66,7 +66,7 @@ def SVI_calibration(k_list: list, mktTotVar_list: list, weights_list: list, use_
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
-        tol=1e-8,
+        tol=1e-10,
     )
     final_params = list(result.x)
     return {
@@ -230,8 +230,22 @@ def SSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_l
             SSVI(k=inputs_list[i][0], theta=inputs_list[i][1],
                  rho_=params_list[0], eta_=params_list[1], lambda_=params_list[2]) - mktTotVar_list[i], 2)
     MSVE = SVE / len(inputs_list)
-    # Penality
+    # Penality (Gatheral/Jacquier)
     penality = 0
+    # Calendar Spread Arbitrage
+    theta_list = sorted(list(set([inputs_list[i][1] for i in range(0, len(inputs_list))])))
+    for i in range(1, len(theta_list)):
+        diff = theta_list[i] * SSVI_phi(theta=theta_list[i], eta_=params_list[1], lambda_=params_list[2]) - \
+                    theta_list[i-1] * SSVI_phi(theta=theta_list[i-1], eta_=params_list[1], lambda_=params_list[2])
+        if not 0 <= diff <= 1 / pow(params_list[0], 2) * (1 + np.sqrt(1 - pow(params_list[0], 2))) * SSVI_phi(theta=theta_list[i-1], eta_=params_list[1], lambda_=params_list[2]):
+            penality = penality + 10e5
+    # Butterfly Spread Arbitrage
+    for i in range(1, len(theta_list)):
+        if not theta_list[i] * SSVI_phi(theta=theta_list[i], eta_=params_list[1], lambda_=params_list[2]) * (1 + abs(params_list[0])) < 4 and \
+            theta_list[i] * pow(SSVI_phi(theta=theta_list[i], eta_=params_list[1], lambda_=params_list[2]), 2) * (
+                        1 + abs(params_list[0])) <= 4:
+            penality = penality + 10e5
+    # Penality (Durrleman)
     if use_durrleman_cond:
         theta_list = []
         g_list = []
@@ -262,7 +276,7 @@ def SSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list, 
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
-        tol=1e-8,
+        tol=1e-10,
     )
     final_params = list(result.x)
     return {
@@ -445,7 +459,23 @@ def eSSVI_minimisation_function(params_list: list, inputs_list: list, mktTotVar_
                   a_=params_list[0], b_=params_list[1], c_=params_list[2], eta_=params_list[3], lambda_=params_list[4])
             - mktTotVar_list[i], 2)
     MSVE = SVE / len(inputs_list)
-    # Penality
+    # Penality (Gatheral/Jacquier)
+    penality = 0
+    # Calendar Spread Arbitrage
+    theta_list = sorted(list(set([inputs_list[i][1] for i in range(0, len(inputs_list))])))
+    for i in range(1, len(theta_list)):
+        diff = theta_list[i] * eSSVI_phi(theta=theta_list[i], eta_=params_list[3], lambda_=params_list[4]) - \
+                    theta_list[i-1] * eSSVI_phi(theta=theta_list[i-1], eta_=params_list[3], lambda_=params_list[4])
+        if not 0 <= diff <= 1 / pow(eSSVI_rho(theta=theta_list[i], a_=params_list[0], b_=params_list[1], c_=params_list[2]), 2) * \
+               (1 + np.sqrt(1 - pow(eSSVI_rho(theta=theta_list[i], a_=params_list[0], b_=params_list[1], c_=params_list[2]), 2))) * eSSVI_phi(theta=theta_list[i-1], eta_=params_list[3], lambda_=params_list[4]):
+            penality = penality + 10e5
+    # Butterfly Spread Arbitrage
+    for i in range(1, len(theta_list)):
+        if not theta_list[i] * eSSVI_phi(theta=theta_list[i-1], eta_=params_list[3], lambda_=params_list[4]) * (1 + abs(eSSVI_rho(theta=theta_list[i], a_=params_list[0], b_=params_list[1], c_=params_list[2]))) < 4 and \
+            theta_list[i] * pow(eSSVI_phi(theta=theta_list[i-1], eta_=params_list[3], lambda_=params_list[4]), 2) * (
+                        1 + abs(eSSVI_rho(theta=theta_list[i], a_=params_list[0], b_=params_list[1], c_=params_list[2]))) <= 4:
+            penality = penality + 10e5
+    # Penality (Durrleman)
     penality = 0
     if use_durrleman_cond:
         theta_list = []
@@ -477,7 +507,7 @@ def eSSVI_calibration(k_list: list, atmfTotVar_list: list, mktTotVar_list: list,
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktTotVar_list, weights_list, use_durrleman_cond),
-        tol=1e-8,
+        tol=1e-10,
     )
     final_params = list(result.x)
     return {
@@ -666,7 +696,7 @@ def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: l
     :param T_list: [T_1, T_2, T_3, ...]
     :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
-    :return: calibrated parameters dict {alpha_, beta_, rho_, vega_}
+    :return: calibrated parameters dict {alpha_, rho_, nu_}
     """
     init_params_list = [0.25, -0.4, 4]
     inputs_list = [(f, K, T) for f, K, T in zip(f_list, K_list, T_list)]
@@ -675,7 +705,7 @@ def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: l
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktImpVol_list, weights_list),
-        tol=1e-8,
+        tol=1e-10,
     )
     final_params = list(result.x)
     return {
@@ -703,15 +733,14 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: flo
     z_prime = - nu_ / (alpha_ * K)
     xhi_prime = ((-2 * z + 2 * rho_ - 1) * z_prime) / (2 * ((2 * rho_ - 1) * z - pow(z, 2) + rho_ - 1))
 
-    return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
+    # return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
 
-"""
-    K_neg_shifted = K - 0.1/100
-    K_pos_shifted = K + 0.1/100
+    K_neg_shifted = K - 0.05/100
+    K_pos_shifted = K + 0.05/100
 
     vol_sabr_neg_shifted = SABR(f=f, K=K_neg_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
     vol_sabr_pos_shifted = SABR(f=f, K=K_pos_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
 
     return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
-"""
-
+    # return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
+    # return - 0.5 * (- rho_ * nu_ / alpha_) * np.log(K/f)
