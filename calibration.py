@@ -737,7 +737,7 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: f
     v_prime_den1 = 2 * alpha_ * v_prime_common_log
 
     v_prime_num2 = vega_ * pow(f * K, (1-beta_)/2)
-    v_prime_den2 = 2 * K * v_prime_common_log
+    v_prime_den2 = alpha_ * K * v_prime_common_log
 
     v_prime_num31 = (1-beta_)*f*pow(vega_, 2)*pow(f*K, -beta_)*np.log(f/K)/pow(alpha_, 2) -\
                         2 * pow(vega_, 2)*pow(f*K, 1-beta_)*np.log(f/K)/(pow(alpha_, 2) * K) + \
@@ -749,7 +749,7 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: f
     v_prime_num3 = vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K) * ((v_prime_num31 / v_prime_den31) -
                         (vega_*pow(f*K, (1-beta_)/2))/(alpha_*K) +
                         (1-beta_)*f*vega_*pow(f*K, (1-beta_)/2 - 1) * np.log(f/K)/(2*alpha_))
-    v_prime_den3 = alpha_ * (np.sqrt(pow(vega_, 2) * pow(f*K, 1-beta_)*pow(np.log(f/K), 2)/pow(alpha_, 2) +
+    v_prime_den3 = alpha_ * (np.sqrt(pow(vega_, 2) * pow(f*K, 1-beta_)*pow(np.log(f/K), 2)/pow(alpha_, 2) -
                         (2 * rho_ * vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K))/alpha_+1) +
                         (vega_*pow(f*K, (1-beta_)/2)*np.log(f/K))/alpha_ - rho_) * pow(v_prime_common_log, 2)
 
