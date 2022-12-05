@@ -308,8 +308,8 @@ for maturity in df["Maturity"].unique():
         df[df["Maturity"] == maturity].apply(lambda x:
                                              pow(calibration.SABR(
                                                  f=x["Forward Perc"], K=x["Strike Perc"], T=x["Maturity (in Y)"],
-                                                 alpha_=SABR_params["alpha_"], beta_=SABR_params["beta_"],
-                                                 rho_=SABR_params["rho_"], vega_=SABR_params["vega_"]), 2) *
+                                                 alpha_=SABR_params["alpha_"], rho_=SABR_params["rho_"],
+                                                 nu_=SABR_params["nu_"]), 2) *
                                              x["Maturity (in Y)"], axis=1)
 df["SSVI TV"] = df.apply(lambda x:
                          calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
@@ -372,8 +372,8 @@ for maturity in df["Maturity"].unique():
     SABR_params = list(df_mat["SABR Params"])[0]
     df.loc[df["Maturity"] == maturity, ['SABR Skew']] = df[df["Maturity"] == maturity].apply(
         lambda x: calibration.SABR_skew(f=x["Forward Perc"], K=x["Strike Perc"], T=x["Maturity (in Y)"],
-                                        alpha_=SABR_params["alpha_"], beta_=SABR_params["beta_"], rho_=SABR_params["rho_"],
-                                        vega_=SABR_params["vega_"]), axis=1)
+                                        alpha_=SABR_params["alpha_"], rho_=SABR_params["rho_"],
+                                        nu_=SABR_params["nu_"]), axis=1)
 
 df["SSVI Skew"] = df.apply(lambda x:
                            calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
@@ -664,8 +664,7 @@ for maturity in df["Maturity"].unique():
     maturity = list(df_bis["Maturity (in Y)"])[0]
     forward = list(df_bis["Forward Perc"])[0]
     tv_list = [pow(calibration.SABR(f=forward, K=forward * np.exp(k), T=maturity, alpha_=SABR_params["alpha_"],
-                                beta_=SABR_params["beta_"], rho_=SABR_params["rho_"],
-                                vega_=SABR_params["vega_"]), 2) * maturity for k in k_list]
+                                rho_=SABR_params["rho_"], nu_=SABR_params["nu_"]), 2) * maturity for k in k_list]
     axs2[0, 3].plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
     axs2[0, 3].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
 axs2[0, 3].grid()
@@ -832,9 +831,9 @@ start = end
 timer_id = timer_id + 1
 
 # Display ACA Scores
-print("\nACA Score (Skew Bounds) :")
+print("\nACA Scores (Skew Bounds) :")
 print(df_aca_skew_bounds)
-print("\nACA Score (Call/Put Triangles) :")
+print("\nACA Scores (Call/Put Triangles) :")
 print(df_aca_call_triangles)
 
 # Display All Figures

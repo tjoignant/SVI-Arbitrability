@@ -626,27 +626,24 @@ def eSSVI_Durrleman_Condition(theta: float, a_: float, b_: float, c_: float, eta
                                        log_forward_convexity_list=log_forward_convexity_list)
 
 
-def SABR(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float, vega_: float):
+def SABR(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: float):
     """
     :param f: forward (input)
     :param K: strike (input)
     :param T: maturity (input)
     :param alpha_: instantaneous vol (param)
-    :param beta_: CEV component for forward rate (param)
     :param rho_: spot vol constant correlation (param)
-    :param vega_: constant vol of vol (param)
+    :param nu_: constant vol of vol (param)
     :return: volatility
     """
-    z = (vega_ / alpha_) * pow(f * K, (1-beta_)/2) * np.log(f/K)
+    z = (nu_ / alpha_) * np.log(f/K)
     xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1-rho_))
-    num = alpha_ * (1 + T * ((pow(1-beta_, 2)/24) * (pow(alpha_, 2)/pow(f * K, 1 - beta_)) + (1/4) * ((alpha_*beta_*rho_*vega_)/(pow(f*K, (1 - beta_)/2))) + ((2 - 3*pow(rho_, 2))/24) * pow(vega_, 2)))
-    den = (pow(f*K, (1-beta_)/2)) * (1 + (pow(1-beta_, 2) * pow(np.log(f/K), 2)) / 24 + pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920)
-    return (z/xhi) * num / den
+    return alpha_ * (1 + T * (rho_ * nu_ * alpha_ / 4 + (2 - 3 * pow(rho_, 2)) / 24 * pow(nu_, 2))) * (z/xhi)
 
 
 def SABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list, weights_list: list):
     """
-    :param params_list: [alpha_, beta_, rho_, vega_]
+    :param params_list: [alpha_, rho_, nu_]
     :param inputs_list: [(f_1, K_1, T_1), (f_2, K_2, T_2), (f_3, K_3, T_3), ...]
     :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
     :param weights_list: [w_1, w_2, w_3, ...]
@@ -657,7 +654,7 @@ def SABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_l
     for i in range(0, len(inputs_list)):
         SVE = SVE + weights_list[i] * pow(
             SABR(f=inputs_list[i][0], K=inputs_list[i][1], T=inputs_list[i][2], alpha_=params_list[0],
-                 beta_=params_list[1], rho_=params_list[2], vega_=params_list[3]) - mktImpVol_list[i], 2)
+                 rho_=params_list[1], nu_=params_list[2]) - mktImpVol_list[i], 2)
     MSVE = SVE / len(inputs_list)
     return MSVE
 
@@ -671,7 +668,7 @@ def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: l
     :param weights_list: [w_1, w_2, w_3, ...]
     :return: calibrated parameters dict {alpha_, beta_, rho_, vega_}
     """
-    init_params_list = [0.01, 0.01, 0.01, 0.01]
+    init_params_list = [0.25, -0.4, 4]
     inputs_list = [(f, K, T) for f, K, T in zip(f_list, K_list, T_list)]
     result = optimize.minimize(
         SABR_minimisation_function,
@@ -683,83 +680,38 @@ def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: l
     final_params = list(result.x)
     return {
         "alpha_": final_params[0],
-        "beta_": final_params[1],
-        "rho_": final_params[2],
-        "vega_": final_params[3],
+        "rho_": final_params[1],
+        "nu_": final_params[2],
     }
 
 
-def SABR_skew(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float, vega_: float):
+def SABR_skew(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: float):
     """
     :param f: forward (input)
     :param K: strike (input)
     :param T: maturity (input)
     :param alpha_: instantaneous vol (param)
-    :param beta_: CEV component for forward rate (param)
     :param rho_: spot vol constant correlation (param)
-    :param vega_: constant vol of vol (param)
+    :param nu_: constant vol of vol (param)
     :return: SABR skew
     """
+    constant = alpha_ * (1 + T * (rho_ * nu_ * alpha_ / 4 + (2 - 3 * pow(rho_, 2)) / 24 * pow(nu_, 2)))
 
-    # SABR = u * v
-    # Skew SABR = u' * v + u * v'
+    z = (nu_ / alpha_) * np.log(f / K)
+    xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1 - rho_))
 
-    z = (vega_ / alpha_) * pow(f * K, (1-beta_)/2) * np.log(f/K)
-    xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1-rho_))
+    z_prime = - nu_ / (alpha_ * K)
+    xhi_prime = ((-2 * z + 2 * rho_ - 1) * z_prime) / (2 * ((2 * rho_ - 1) * z - pow(z, 2) + rho_ - 1))
 
-    u_num = alpha_ * (1 + T * ((pow(1-beta_, 2)/24) * (pow(alpha_, 2)/pow(f * K, 1 - beta_)) + (1/4) * ((alpha_*beta_*rho_*vega_)/(pow(f*K, (1 - beta_)/2))) + ((2 - 3*pow(rho_, 2))/24) * pow(vega_, 2)))
-    u_den = (pow(f*K, (1-beta_)/2)) * (1 + (pow(1-beta_, 2) * pow(np.log(f/K), 2)) / 24 + pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920)
+    return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
 
-    u = u_num / u_den
-    v = z / xhi
-
-    u_prime_num1 = alpha_ * (1 - beta_) * f * pow(f * K, (beta_ - 1) / 2 - 1) * (T * ((1 / 24) * pow(alpha_, 2) * pow(1 - beta_, 2) *
-           pow(f * K, beta_ - 1) + 0.25 * alpha_ * beta_ * rho_ * vega_ * pow(f * K, (beta_ - 1) / 2) + (1 / 24) *
-           (2 - 3 * pow(rho_, 2)) * pow(vega_, 2)) + 1)
-    u_prime_den1 = 2 * (((pow(1 - beta_, 4) * pow(np.log(f / K), 4)) / 1920) + (1 / 24) * pow(1 - beta_, 2) * pow(np.log(f / K), 2) + 1)
-
-    u_prime_num2 = alpha_ * pow(f * K, (beta_ - 1)/2) * (- (pow(1 - beta_, 4) * pow(np.log(f/K), 3)) / (480 * K) - (pow(1-beta_, 2) * np.log(f/K)) / (12 * K)) \
-           * (T*((1/24) * pow(alpha_, 2) * pow(1-beta_, 2) * pow(f*K, beta_-1) + 0.25 *
-            alpha_ * beta_ * rho_ * vega_ * pow(f*K, (beta_-1)/2) + (1/24) * (2 - 3 * pow(rho_, 2)) * pow(vega_, 2))+1)
-    u_prime_den2 = pow((pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920) + (1/24) * pow(1-beta_, 2) * pow(np.log(f/K), 2) + 1, 2)
-
-    u_prime_num3 = alpha_ * T * pow(f * K, (beta_-1)/2) * ((-1/24) * pow(alpha_, 2) * pow(1 - beta_, 3) * f * pow(f * K, beta_ - 2) -
-                0.125 * alpha_ * (1 - beta_) * beta_ * f * rho_ * vega_ * pow(f * K, (beta_ - 1)/2 - 1))
-    u_prime_den3 = (pow(1 - beta_, 4) * pow(np.log(f/K), 4) / 1920) + (1/24) * pow(1 - beta_, 2) * pow(np.log(f/K), 2) + 1
-
-    u_prime = - u_prime_num1 / u_prime_den1 - u_prime_num2 / u_prime_den2 + u_prime_num3 / u_prime_den3
-
-    v_prime_common_log = np.log((np.sqrt((pow(vega_, 2)*pow(f*K, 1-beta_)*pow(f/K, 2)/pow(alpha_, 2)) -
-                                 (2 * rho_ * vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K)/alpha_) + 1) +
-                                 (vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K)/alpha_) - rho_) / (1 - rho_))
-
-    v_prime_num1 = (1-beta_) * f * vega_ * pow(f*K, (1-beta_)/2-1) * np.log(f/K)
-    v_prime_den1 = 2 * alpha_ * v_prime_common_log
-
-    v_prime_num2 = vega_ * pow(f * K, (1-beta_)/2)
-    v_prime_den2 = alpha_ * K * v_prime_common_log
-
-    v_prime_num31 = (1-beta_)*f*pow(vega_, 2)*pow(f*K, -beta_)*np.log(f/K)/pow(alpha_, 2) -\
-                        2 * pow(vega_, 2)*pow(f*K, 1-beta_)*np.log(f/K)/(pow(alpha_, 2) * K) + \
-                        2*rho_*vega_*pow(f*K, (1-beta_)/2)/(alpha_*K) -\
-                        (1-beta_)*f*rho_*vega_*pow(f*K, (1-beta_)/2-1)*np.log(f/K)/alpha_
-    v_prime_den31 = 2 * np.sqrt((pow(vega_, 2)*pow(f*K, 1-beta_)*pow(f/K, 2))/pow(alpha_, 2) -
-                        (2*rho_*vega_*pow(f*K, (1-beta_)/2)*np.log(f/K))/alpha_ + 1)
-
-    v_prime_num3 = vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K) * ((v_prime_num31 / v_prime_den31) -
-                        (vega_*pow(f*K, (1-beta_)/2))/(alpha_*K) +
-                        (1-beta_)*f*vega_*pow(f*K, (1-beta_)/2 - 1) * np.log(f/K)/(2*alpha_))
-    v_prime_den3 = alpha_ * (np.sqrt(pow(vega_, 2) * pow(f*K, 1-beta_)*pow(np.log(f/K), 2)/pow(alpha_, 2) -
-                        (2 * rho_ * vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K))/alpha_+1) +
-                        (vega_*pow(f*K, (1-beta_)/2)*np.log(f/K))/alpha_ - rho_) * pow(v_prime_common_log, 2)
-
-    v_prime = v_prime_num1 / v_prime_den1 - v_prime_num2 / v_prime_den2 - v_prime_num3 / v_prime_den3
-    #return u_prime * v + u * v_prime
-
+"""
     K_neg_shifted = K - 0.1/100
     K_pos_shifted = K + 0.1/100
 
-    vol_sabr_neg_shifted = SABR(f=f, K=K_neg_shifted, T=T, alpha_=alpha_, beta_=beta_, rho_=rho_, vega_=vega_)
-    vol_sabr_pos_shifted = SABR(f=f, K=K_pos_shifted, T=T, alpha_=alpha_, beta_=beta_, rho_=rho_, vega_=vega_)
+    vol_sabr_neg_shifted = SABR(f=f, K=K_neg_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
+    vol_sabr_pos_shifted = SABR(f=f, K=K_pos_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
 
     return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
+"""
+
