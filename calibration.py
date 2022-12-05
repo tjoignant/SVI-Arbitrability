@@ -702,7 +702,7 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: f
     """
 
     # SABR = u * v
-    # Skew SABR = u' * v + u * v
+    # Skew SABR = u' * v + u * v'
 
     z = (vega_ / alpha_) * pow(f * K, (1-beta_)/2) * np.log(f/K)
     xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1-rho_))
@@ -729,6 +729,29 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: f
 
     u_prime = - u_prime_num1 / u_prime_den1 - u_prime_num2 / u_prime_den2 + u_prime_num3 / u_prime_den3
 
-    v_prime = 0
+    v_prime_common_log = np.log((np.sqrt((pow(vega_, 2)*pow(f*K, 1-beta_)*pow(f/K, 2)/pow(alpha_, 2)) -
+                                 (2 * rho_ * vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K)/alpha_) + 1) +
+                                 (vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K)/alpha_) - rho_) / (1 - rho_))
+
+    v_prime_num1 = (1-beta_) * f * vega_ * pow(f*K, (1-beta_)/2-1) * np.log(f/K)
+    v_prime_den1 = 2 * alpha_ * v_prime_common_log
+
+    v_prime_num2 = vega_ * pow(f * K, (1-beta_)/2)
+    v_prime_den2 = 2 * K * v_prime_common_log
+
+    v_prime_num31 = (1-beta_)*f*pow(vega_, 2)*pow(f*K, -beta_)*np.log(f/K)/pow(alpha_, 2) -\
+                        2 * pow(vega_, 2)*pow(f*K, 1-beta_)*np.log(f/K)/(pow(alpha_, 2) * K) + \
+                        2*rho_*vega_*pow(f*K, (1-beta_)/2)/(alpha_*K) -\
+                        (1-beta_)*f*rho_*vega_*pow(f*K, (1-beta_)/2-1)*np.log(f/K)/alpha_
+    v_prime_den31 = 2 * np.sqrt((pow(vega_, 2)*pow(f*K, 1-beta_)*pow(f/K, 2))/pow(alpha_, 2) -
+                        (2*rho_*vega_*pow(f*K, (1-beta_)/2)*np.log(f/K))/alpha_ + 1)
+
+    v_prime_num3 = vega_ * pow(f*K, (1-beta_)/2) * np.log(f/K) * ((v_prime_num31 / v_prime_den31) -
+                        (vega_*pow(f*K, (1-beta_)/2))/(alpha_*K) +
+                        (1-beta_)*f*vega_*pow(f*K, (1-beta_)/2 - 1) * np.log(f/K)/(2*alpha_))
+    v_prime_den3 = 0
+
+
+    v_prime = v_prime_num1 / v_prime_den1 - v_prime_num2 / v_prime_den2 - v_prime_num3 / v_prime_den3
 
     return u_prime * v + u * v_prime
