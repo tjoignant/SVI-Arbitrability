@@ -687,3 +687,21 @@ def SABR_calibration(f_list: list, K_list: list, T_list: list, mktImpVol_list: l
         "rho_": final_params[2],
         "vega_": final_params[3],
     }
+
+
+def SABR_skew(f: float, K: float, T: float, alpha_: float, beta_: float, rho_: float, vega_: float):
+    num1 = alpha_ * (1 - beta_) * f * pow(f * K, (beta_ - 1) / 2 - 1) * (T * ((1 / 24) * pow(alpha_, 2) * pow(1 - beta_, 2) *
+           pow(f * K, beta_ - 1) + 0.25 * alpha_ * beta_ * rho_ * vega_ * pow(f * K, (beta_ - 1) / 2) + (1 / 24) *
+           (2 - 3 * pow(rho_, 2)) * pow(vega_, 2)) + 1)
+    den1 = 2 * (((pow(1 - beta_, 4) * pow(np.log(f / K), 4)) / 1920) + (1 / 24) * pow(1 - beta_, 2) * pow(np.log(f / K), 2) + 1)
+
+    num2 = alpha_ * pow(f * K, (beta_ - 1)/2) * (- (pow(1 - beta_, 4) * pow(np.log(f/K), 3)) / (480 * K) - (pow(1-beta_, 2) * np.log(f/K)) / (12 * K)) \
+           * (T*((1/24) * pow(alpha_, 2) * pow(1-beta_, 2) * pow(f*K, beta_-1) + 0.25 *
+            alpha_ * beta_ * rho_ * vega_ * pow(f*K, (beta_-1)/2) + (1/24) * (2 - 3 * pow(rho_,2)) * pow(vega_, 2))+1)
+    den2 = pow((pow(1-beta_, 4) * pow(np.log(f/K), 4) / 1920) + (1/24) * pow(1-beta_, 2) * pow(np.log(f/K), 2) + 1, 2)
+
+    num3 = alpha_ * T * pow(f * K, (beta_-1)/2) * ((-1/24) * pow(alpha_, 2) * pow(1 - beta_, 3) * f * pow(f * K, beta_ - 2) -
+                0.125 * alpha_ * (1 - beta_) * beta_ * f * rho_ * vega_ * pow(f * K, (beta_ - 1)/2 - 1))
+    den3 = (pow(1 - beta_, 4) * pow(np.log(f/K), 4) / 1920) + (1/24) * pow(1 - beta_, 2) * pow(np.log(f/K), 2) + 1
+
+    return - num1 / den1 - num2 / den2 + num3 / den3
