@@ -749,7 +749,15 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: flo
     vol_sabr_neg_shifted = SABR(f=f, K=K_neg_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
     vol_sabr_pos_shifted = SABR(f=f, K=K_pos_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
 
-    return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
+    # Direct derivative added with B=1
+    common_sqrt = np.sqrt(pow(alpha_, 2)-2*alpha_*rho_*nu_*np.log(f/K)+pow(nu_, 2)*pow(np.log(f/K), 2)/pow(alpha_, 2))
+    num1 = nu_*(T*(6*alpha_*rho_*nu_-3*pow(rho_, 2)*pow(nu_, 2)+2)+24)*(alpha_*common_sqrt*np.log((common_sqrt+(
+            nu_*np.log(f/K))/alpha_-rho_)/(1-rho_))-nu_*np.log(f/K))
+    den1 = (24*alpha_*K*common_sqrt*np.pow(np.log((common_sqrt+(nu_*np.log(f/K))/alpha_-rho_)/(1-rho_)), 2))
+
+    #return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
+
+    return -num1/den1
     # return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
     # return - 0.5 * (- rho_ * nu_ / alpha_) * np.log(K/f)
 
