@@ -828,15 +828,15 @@ for g, ax, name in zip([g1, g2, g3, g4], [axs5[1, 0], axs5[1, 1], axs5[1, 2], ax
 # Export Dataframes in Results Folder
 if not os.path.exists('results'):
     os.makedirs('results')
-with pd.ExcelWriter("results/Results.xlsx") as writer:
+with pd.ExcelWriter(f'results/Results{"_Durrleman" if use_durrleman_cond else ""}.xlsx') as writer:
     df.to_excel(writer, sheet_name="Dataframe")
     df_aca_skew_bounds.to_excel(writer, sheet_name="ACA (Bounds)")
     df_aca_call_triangles.to_excel(writer, sheet_name="ACA (Triangles)")
-    fig1.savefig('results/1. Market Data.png')
-    fig2.savefig('results/2. Calibration Results.png')
-    fig3.savefig('results/3. Calibrated Vol. Errors.png')
-    fig4.savefig('results/4. Calibrated Vol. Skew.png')
-    fig5.savefig('results/5. Shark-Jaw Arbitograms.png')
+    fig1.savefig(f'results/1_Market_Data.png')
+    fig2.savefig(f'results/2_Calibration_Results{"_Durrleman" if use_durrleman_cond else ""}.png')
+    fig3.savefig(f'results/3_Calibrated_Vol_Errors{"_Durrleman" if use_durrleman_cond else ""}.png')
+    fig4.savefig(f'results/4_Calibrated_Vol_Skew{"_Durrleman" if use_durrleman_cond else ""}.png')
+    fig5.savefig(f'results/5_Shark-Jaw_Arbitograms{"_Durrleman" if use_durrleman_cond else ""}.png')
 
 # Timer
 end = time.perf_counter()

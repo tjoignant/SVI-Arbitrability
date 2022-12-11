@@ -733,33 +733,21 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: flo
     :param nu_: constant vol of vol (param)
     :return: SABR skew
     """
-    constant = alpha_ * (1 + T * (rho_ * nu_ * alpha_ / 4 + (2 - 3 * pow(rho_, 2)) / 24 * pow(nu_, 2)))
-
-    z = (nu_ / alpha_) * np.log(f / K)
-    xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1 - rho_))
-
-    z_prime = - nu_ / (alpha_ * K)
-    xhi_prime = ((-2 * z + 2 * rho_ - 1) * z_prime) / (2 * ((2 * rho_ - 1) * z - pow(z, 2) + rho_ - 1))
-
-    # return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
-
+    # Numerical Differential
     K_neg_shifted = K - 0.05/100
     K_pos_shifted = K + 0.05/100
-
     vol_sabr_neg_shifted = SABR(f=f, K=K_neg_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
     vol_sabr_pos_shifted = SABR(f=f, K=K_pos_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
 
-    # Direct derivative added with B=1
-    common_sqrt = np.sqrt(pow(alpha_, 2)-2*alpha_*rho_*nu_*np.log(f/K)+pow(nu_, 2)*pow(np.log(f/K), 2)/pow(alpha_, 2))
-    num1 = nu_*(T*(6*alpha_*rho_*nu_-3*pow(rho_, 2)*pow(nu_, 2)+2)+24)*(alpha_*common_sqrt*np.log((common_sqrt+(
-            nu_*np.log(f/K))/alpha_-rho_)/(1-rho_))-nu_*np.log(f/K))
-    den1 = (24*alpha_*K*common_sqrt*np.pow(np.log((common_sqrt+(nu_*np.log(f/K))/alpha_-rho_)/(1-rho_)), 2))
+    # Analytical Differential (not working for now)
+    constant = alpha_ * (1 + T * (rho_ * nu_ * alpha_ / 4 + (2 - 3 * pow(rho_, 2)) / 24 * pow(nu_, 2)))
+    z = (nu_ / alpha_) * np.log(f / K)
+    xhi = np.log((np.sqrt(1 - 2 * rho_ * z + pow(z, 2)) + z - rho_) / (1 - rho_))
+    z_prime = - nu_ / (alpha_ * K)
+    xhi_prime = ((-2 * z + 2 * rho_ - 1) * z_prime) / (2 * ((2 * rho_ - 1) * z - pow(z, 2) + rho_ - 1))
 
-    #return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
-
-    return -num1/den1
+    return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
     # return constant * (z_prime * xhi - z * xhi_prime) / pow(xhi, 2)
-    # return - 0.5 * (- rho_ * nu_ / alpha_) * np.log(K/f)
 
 
 def SABR_Durrleman_Condition(f: float, T: float, alpha_: float, rho_: float, nu_: float, min_k=-1, max_k=1, nb_k=200):
