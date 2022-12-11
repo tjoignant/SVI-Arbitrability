@@ -15,21 +15,21 @@ import calibration
 import black_scholes
 
 # Variables Initialisation
-start = time.perf_counter()
+timer_id = 1
 spot = 3375.46
-spot_date = dt.datetime(day=7, month=10, year=2022)
 min_volume = 10
-strike_list = [2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100]
 nb_options = []
-nb_options_text = []
 tick_font_size = 8.5
 title_font_size = 11
-timer_id = 1
+nb_options_text = []
 legend_loc = "upper right"
+use_durrleman_cond = False
+start = time.perf_counter()
+spot_date = dt.datetime(day=7, month=10, year=2022)
+log_forward_moneyness_min, log_forward_moneyness_max = -0.75, 0.75
+strike_list = [2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100]
 color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
               'tab:olive', 'tab:cyan']
-log_forward_moneyness_min, log_forward_moneyness_max = -0.75, 0.75
-use_durrleman_cond = False
 
 # Set Pandas Display Settings
 pd.set_option('display.max_rows', 100)
@@ -44,7 +44,6 @@ for file in sorted((f for f in os.listdir(folder) if not f.startswith(".")), key
     if file[0] != "~":
         df_list.append(pd.read_excel(f"{folder}/{file}", header=0, engine='openpyxl').dropna())
 df = pd.concat(df_list)
-
 
 # Set Spot Value & Date
 df["Spot"] = spot
@@ -232,7 +231,8 @@ start = end
 timer_id = timer_id + 1
 
 # Compute Implied Greeks
-df = utils.compute_greeks(df=df, fwd_col="Forward Perc", vol_col="Implied Vol", strike_col="Strike Perc", maturity_col="Maturity (in Y)", df_col="ZC Perc", type_col="Type", name="Implied")
+df = utils.compute_greeks(df=df, fwd_col="Forward Perc", vol_col="Implied Vol", strike_col="Strike Perc",
+                          maturity_col="Maturity (in Y)", df_col="ZC Perc", type_col="Type", name="Implied")
 
 # Compute Log Forward Moneyness & Implied Total Variance (Implied TV)
 df["Log Forward Moneyness"] = df.apply(lambda x: np.log(x["Strike Perc"] / (x["Forward Perc"])), axis=1)
@@ -310,17 +310,15 @@ for maturity in df["Maturity"].unique():
                                              pow(calibration.SABR(
                                                  f=x["Forward Perc"], K=x["Strike Perc"], T=x["Maturity (in Y)"],
                                                  alpha_=SABR_params["alpha_"], rho_=SABR_params["rho_"],
-                                                 nu_=SABR_params["nu_"]), 2) *
-                                             x["Maturity (in Y)"], axis=1)
+                                                 nu_=SABR_params["nu_"]), 2) * x["Maturity (in Y)"], axis=1)
 df["SSVI TV"] = df.apply(lambda x:
                          calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
                                           rho_=SSVI_params["rho_"],
                                           eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]), axis=1)
 df["eSSVI TV"] = df.apply(lambda x:
                           calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
-                                            a_=eSSVI_params["a_"],
-                                            b_=eSSVI_params["b_"], c_=eSSVI_params["c_"], eta_=eSSVI_params["eta_"],
-                                            lambda_=eSSVI_params["lambda_"]), axis=1)
+                                            a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
+                                            eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]), axis=1)
 
 # Compute BS Absolute Volatility & BS Price Errors (in %)
 for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
@@ -366,10 +364,9 @@ for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = list(df_mat["SVI Params"])[0]
     df.loc[df["Maturity"] == maturity, ['SVI Skew']] = df[df["Maturity"] == maturity].apply(
-        lambda x: calibration.SVI_skew(strike=x["Strike Perc"], forward=x["Forward Perc"],
-                                       maturity=x["Maturity (in Y)"], a_=SVI_params["a_"], b_=SVI_params["b_"],
-                                       rho_=SVI_params["rho_"], m_=SVI_params["m_"],
-                                       sigma_=SVI_params["sigma_"]), axis=1)
+        lambda x: calibration.SVI_skew(strike=x["Strike Perc"], forward=x["Forward Perc"], a_=SVI_params["a_"],
+                                       maturity=x["Maturity (in Y)"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
+                                       m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]), axis=1)
     SABR_params = list(df_mat["SABR Params"])[0]
     df.loc[df["Maturity"] == maturity, ['SABR Skew']] = df[df["Maturity"] == maturity].apply(
         lambda x: calibration.SABR_skew(f=x["Forward Perc"], K=x["Strike Perc"], T=x["Maturity (in Y)"],
@@ -378,35 +375,37 @@ for maturity in df["Maturity"].unique():
 
 df["SSVI Skew"] = df.apply(lambda x:
                            calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
-                                                 maturity=x["Maturity (in Y)"],
+                                                 maturity=x["Maturity (in Y)"], eta_=SSVI_params["eta_"],
                                                  forward=x["Forward Perc"], rho_=SSVI_params["rho_"],
-                                                 eta_=SSVI_params["eta_"],
                                                  lambda_=SSVI_params["lambda_"]), axis=1)
 df["eSSVI Skew"] = df.apply(lambda x:
                             calibration.eSSVI_skew(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
-                                                   maturity=x["Maturity (in Y)"],
+                                                   maturity=x["Maturity (in Y)"], a_=eSSVI_params["a_"],
                                                    forward=x["Forward Perc"], eta_=eSSVI_params["eta_"],
-                                                   lambda_=eSSVI_params["lambda_"],
-                                                   a_=eSSVI_params["a_"], b_=eSSVI_params["b_"],
+                                                   lambda_=eSSVI_params["lambda_"], b_=eSSVI_params["b_"],
                                                    c_=eSSVI_params["c_"], ), axis=1)
 
 # Compute Skew Surfaces
-df_svi_skew_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI Skew",
-                                                             strike_list=strike_list)
-df_ssvi_skew_surface, ssvi_min, ssvi_max = utils.create_surface(df=df, column_name="SSVI Skew",
-                                                                strike_list=strike_list)
-df_essvi_skew_surface, essvi_min, essvi_max = utils.create_surface(df=df, column_name="eSSVI Skew",
-                                                                   strike_list=strike_list)
-df_sabr_skew_surface, sabr_min, sabr_max = utils.create_surface(df=df, column_name="SABR Skew",
-                                                                   strike_list=strike_list)
+df_svi_skew_surface, svi_min, svi_max = utils.create_surface(
+    df=df, column_name="SVI Skew", strike_list=strike_list)
+df_ssvi_skew_surface, ssvi_min, ssvi_max = utils.create_surface(
+    df=df, column_name="SSVI Skew", strike_list=strike_list)
+df_essvi_skew_surface, essvi_min, essvi_max = utils.create_surface(
+    df=df, column_name="eSSVI Skew", strike_list=strike_list)
+df_sabr_skew_surface, sabr_min, sabr_max = utils.create_surface(
+    df=df, column_name="SABR Skew", strike_list=strike_list)
 skew_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min)
 skew_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_min)
 
 # Compute Call/Put Bis Mid Price (Call-Put Parity)
 df["Call Bis Type"] = "Call"
 df["Put Bis Type"] = "Put"
-df["Call Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Call" else x["Mid Perc"] + x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]), axis=1)
-df["Put Bis Mid Perc"] = df.apply(lambda x: x["Mid Perc"] if x["Type"] == "Put" else x["Mid Perc"] - x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]), axis=1)
+df["Call Bis Mid Perc"] = df.apply(lambda x:
+                                   x["Mid Perc"] if x["Type"] == "Call"
+                                   else x["Mid Perc"] + x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]), axis=1)
+df["Put Bis Mid Perc"] = df.apply(lambda x:
+                                  x["Mid Perc"] if x["Type"] == "Put"
+                                  else x["Mid Perc"] - x["ZC Perc"] * (x["Forward Perc"] - x["Strike Perc"]), axis=1)
 
 # Compute Undiscounted Call/Put Prices
 df["Call Bis Mid Fwd Perc"] = df["Call Bis Mid Perc"] / df["ZC Perc"]
@@ -447,7 +446,8 @@ smin_surface_max = max(smin_max, smax_max)
 
 # Compute Shark-Jaw Skew Bounds Test
 for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
-    df[f"{surface} Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x[f"{surface} Skew"] < x["s_max"] else 1, axis=1)
+    df[f"{surface} Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x[f"{surface} Skew"] < x["s_max"]
+                                                        else 1, axis=1)
 
 # Compute Absolute Calibration Arbitrability Scores (ACA Skew Bounds)
 df_aca_skew_bounds = pd.DataFrame(index=df["Pretty Maturity"].unique(), columns=["SVI", "SSVI", "eSSVI", "SABR"])
@@ -458,18 +458,19 @@ for col in df_aca_skew_bounds.columns:
     df_aca_skew_bounds.loc["Overall", f"{col}"] = round((1 - df[f'{col} Bounds Test'].mean()) * 10, 2)
 
 # Compute Arbitrability Surfaces (Skew Bounds)
-df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI Bounds Test",
-                                                                   strike_list=strike_list)
-df_ssvi_bounds_arb_surface, ssvi_min, ssvi_max = utils.create_surface(df=df, column_name="SSVI Bounds Test",
-                                                                      strike_list=strike_list)
-df_essvi_bounds_arb_surface, essvi_min, essvi_max = utils.create_surface(df=df, column_name="eSSVI Bounds Test",
-                                                                         strike_list=strike_list)
-df_sabr_bounds_arb_surface, sabr_min, sabr_max = utils.create_surface(df=df, column_name="SABR Bounds Test",
-                                                                         strike_list=strike_list)
+df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(
+    df=df, column_name="SVI Bounds Test", strike_list=strike_list)
+df_ssvi_bounds_arb_surface, ssvi_min, ssvi_max = utils.create_surface(
+    df=df, column_name="SSVI Bounds Test", strike_list=strike_list)
+df_essvi_bounds_arb_surface, essvi_min, essvi_max = utils.create_surface(
+    df=df, column_name="eSSVI Bounds Test", strike_list=strike_list)
+df_sabr_bounds_arb_surface, sabr_min, sabr_max = utils.create_surface(
+    df=df, column_name="SABR Bounds Test", strike_list=strike_list)
 
 # Compute European Binary Prices (BEUI/BEDI)
 for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
-    df[f"{surface} BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] + x["Call Bis Vega"] * x[f"{surface} Skew"]), axis=1)
+    df[f"{surface} BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] +
+                                                  x["Call Bis Vega"] * x[f"{surface} Skew"]), axis=1)
     df[f"{surface} BEDI"] = 1 - df[f"{surface} BEUI"]
 
 # Compute Call/Put Triangles
@@ -500,14 +501,14 @@ for col in df_aca_call_triangles.columns:
     df_aca_call_triangles.loc["Overall", f"{col}"] = round((1 - df[f'{col} Triangles Test'].mean()) * 10, 2)
 
 # Compute Arbitrability Surfaces (Call/Put Triangles)
-df_svi_triangles_arb_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI Triangles Test",
-                                                                  strike_list=strike_list)
-df_ssvi_triangles_arb_surface, ssvi_min, ssvi_max = utils.create_surface(df=df, column_name="SSVI Triangles Test",
-                                                                     strike_list=strike_list)
-df_essvi_triangles_arb_surface, essvi_min, essvi_max = utils.create_surface(df=df, column_name="eSSVI Triangles Test",
-                                                                        strike_list=strike_list)
-df_sabr_triangles_arb_surface, sabr_min, sabr_max = utils.create_surface(df=df, column_name="SABR Triangles Test",
-                                                                        strike_list=strike_list)
+df_svi_triangles_arb_surface, svi_min, svi_max = utils.create_surface(
+    df=df, column_name="SVI Triangles Test", strike_list=strike_list)
+df_ssvi_triangles_arb_surface, ssvi_min, ssvi_max = utils.create_surface(
+    df=df, column_name="SSVI Triangles Test", strike_list=strike_list)
+df_essvi_triangles_arb_surface, essvi_min, essvi_max = utils.create_surface(
+    df=df, column_name="eSSVI Triangles Test", strike_list=strike_list)
+df_sabr_triangles_arb_surface, sabr_min, sabr_max = utils.create_surface(
+    df=df, column_name="SABR Triangles Test", strike_list=strike_list)
 
 # Timer
 end = time.perf_counter()
