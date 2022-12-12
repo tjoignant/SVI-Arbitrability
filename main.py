@@ -89,12 +89,10 @@ while nb_arbitrage > 0:
             if len(df_check.index) >= 2:
                 # Calls
                 if type == "Call":
-                    df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(-1) * \
-                                            ((df_check["Strike"].shift(-1) - df_check["Strike"]) /
-                                             (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)) + 1) + \
-                                            df_check["Mid"].shift(-2) * (
-                                                    (df_check["Strike"].shift(-1) - df_check["Strike"]) /
-                                                    (df_check["Strike"].shift(-2) - df_check["Strike"].shift(-1)))
+                    df_check["Butterfly"] = df_check["Mid"].shift(-2) - df_check["Mid"].shift(-1) + \
+                                            (df_check["Strike"].shift(-1) - df_check["Strike"].shift(-2)) * \
+                                            (df_check["Mid"] - df_check["Mid"].shift(-1)) / \
+                                            (df_check["Strike"] - df_check["Strike"].shift(-1))
                     df_check["Spread"] = df_check["Mid"] - df_check["Mid"].shift(-1)
                     id_with_butterfly_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
                     id_with_spread_arbitrage = list(df_check[df_check["Spread"] <= 0].index)
@@ -112,11 +110,10 @@ while nb_arbitrage > 0:
                         id_to_remove.append(df_select[['Volm']].idxmin()[0])
                 # Puts
                 else:
-                    df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) * \
-                                            (1 + (df_check["Strike"].shift(1) - df_check["Strike"]) / (
-                                            df_check["Strike"].shift(2) - df_check["Strike"].shift(1))) + \
-                                            df_check["Mid"].shift(2) * ((df_check["Strike"].shift(1) - df_check[
-                                            "Strike"]) / (df_check["Strike"].shift(2) - df_check["Strike"].shift(1)))
+                    df_check["Butterfly"] = df_check["Mid"] - df_check["Mid"].shift(1) + \
+                                            (df_check["Strike"].shift(1) - df_check["Strike"]) * \
+                                            (df_check["Mid"].shift(2) - df_check["Mid"].shift(1)) / \
+                                            (df_check["Strike"].shift(2) - df_check["Strike"].shift(1))
                     df_check["Spread"] = df_check["Mid"] - df_check["Mid"].shift(1)
                     id_with_butterfly_arbitrage = list(df_check[df_check["Butterfly"] <= 0].index)
                     id_with_spread_arbitrage = list(df_check[df_check["Spread"] <= 0].index)
