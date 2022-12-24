@@ -734,8 +734,8 @@ def SABR_skew(f: float, K: float, T: float, alpha_: float, rho_: float, nu_: flo
     :return: SABR skew
     """
     # Numerical Differential
-    K_neg_shifted = K - 0.05/100
-    K_pos_shifted = K + 0.05/100
+    K_neg_shifted = K - pow(10, -5)
+    K_pos_shifted = K + pow(10, -5)
     vol_sabr_neg_shifted = SABR(f=f, K=K_neg_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
     vol_sabr_pos_shifted = SABR(f=f, K=K_pos_shifted, T=T, alpha_=alpha_, rho_=rho_, nu_=nu_)
 
