@@ -7,6 +7,7 @@ import datetime as dt
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+from scipy.interpolate import interp1d
 from matplotlib.dates import DateFormatter
 from sklearn.linear_model import LinearRegression
 
@@ -58,6 +59,7 @@ df["Type"] = df["Ticker"].apply(lambda x: "Call" if "C" in x.split(" ")[2] else 
 df["Underlying"] = df["Ticker"].apply(lambda x: x.split(" ")[0])
 df["Underlying"] = df["Underlying"].apply(lambda x: x[1:-1] if x[0] == "W" else x)
 df["Maturity"] = df["Ticker"].apply(lambda x: dt.datetime.strptime(x.split(" ")[1], "%m/%d/%y"))
+df["Strike"] = df["Strike"].astype(int)
 df["Strike Perc"] = df["Strike"] / df["Spot"]
 
 # Compute Mid Price & Maturity
@@ -238,7 +240,7 @@ df["Implied TV"] = df["Implied Vol"] * df["Implied Vol"] * df["Maturity (in Y)"]
 # Set Minimisation Weight Column
 df["Weight"] = df["Implied Vol"]
 
-# Calibrate SVI Curves + Compute SVI ATMF Implied TV
+# Calibrate SVI Curves + Compute ATM/ATMF Implied Vol & SVI ATMF Implied TV
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = calibration.SVI_calibration(
@@ -248,14 +250,20 @@ for maturity in df["Maturity"].unique():
         use_durrleman_cond=use_durrleman_cond,
     )
     df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
+    interp_function = interp1d(x=df_mat["Strike Perc"], y=df_mat["Implied Vol"], kind='cubic')
+    df.loc[df["Maturity"] == maturity, ['ATM Implied Vol']] = interp_function(1)
+    df.loc[df["Maturity"] == maturity, ['ATMF Implied Vol']] = interp_function(df_mat["Forward Perc"].values[0])
     df.loc[df["Maturity"] == maturity, ['SVI ATMF Implied TV']] = \
         calibration.SVI(k=0, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                         m_=SVI_params["m_"], sigma_=SVI_params["sigma_"])
 
+# Compute ATMF Implied Total Variance (TV)
+df["ATMF Implied TV"] = df["ATMF Implied Vol"] * df["ATMF Implied Vol"] * df["Maturity (in Y)"]
+
 # Calibrate SSVI Surface
 SSVI_params = calibration.SSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
-    atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
+    atmfTotVar_list=list(df["ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df["Weight"]),
     use_durrleman_cond=use_durrleman_cond,
@@ -265,7 +273,7 @@ df['SSVI Params'] = [SSVI_params] * len(df.index)
 # Calibrate eSSVI Surface
 eSSVI_params = calibration.eSSVI_calibration(
     k_list=list(df["Log Forward Moneyness"]),
-    atmfTotVar_list=list(df["SVI ATMF Implied TV"]),
+    atmfTotVar_list=list(df["ATMF Implied TV"]),
     mktTotVar_list=list(df["Implied TV"]),
     weights_list=list(df["Weight"]),
     use_durrleman_cond=use_durrleman_cond,
@@ -309,11 +317,11 @@ for maturity in df["Maturity"].unique():
                                                  alpha_=SABR_params["alpha_"], rho_=SABR_params["rho_"],
                                                  nu_=SABR_params["nu_"]), 2) * x["Maturity (in Y)"], axis=1)
 df["SSVI TV"] = df.apply(lambda x:
-                         calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
+                         calibration.SSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"],
                                           rho_=SSVI_params["rho_"],
                                           eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"]), axis=1)
 df["eSSVI TV"] = df.apply(lambda x:
-                          calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["SVI ATMF Implied TV"],
+                          calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"],
                                             a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                                             eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]), axis=1)
 
@@ -371,12 +379,12 @@ for maturity in df["Maturity"].unique():
                                         nu_=SABR_params["nu_"]), axis=1)
 
 df["SSVI Skew"] = df.apply(lambda x:
-                           calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
+                           calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"],
                                                  maturity=x["Maturity (in Y)"], eta_=SSVI_params["eta_"],
                                                  forward=x["Forward Perc"], rho_=SSVI_params["rho_"],
                                                  lambda_=SSVI_params["lambda_"]), axis=1)
 df["eSSVI Skew"] = df.apply(lambda x:
-                            calibration.eSSVI_skew(strike=x["Strike Perc"], theta=x["SVI ATMF Implied TV"],
+                            calibration.eSSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"],
                                                    maturity=x["Maturity (in Y)"], a_=eSSVI_params["a_"],
                                                    forward=x["Forward Perc"], eta_=eSSVI_params["eta_"],
                                                    lambda_=eSSVI_params["lambda_"], b_=eSSVI_params["b_"],
@@ -630,7 +638,7 @@ axs2[0, 0].set_title("SVI Implied TV", fontsize=title_font_size)
 k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["SVI ATMF Implied TV"])[0]
+    theta = list(df_bis["ATMF Implied TV"])[0]
     tv_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
                                   lambda_=SSVI_params["lambda_"]) for k in k_list]
     axs2[0, 1].plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
@@ -644,7 +652,7 @@ axs2[0, 1].set_title("SSVI Implied TV", fontsize=title_font_size)
 k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["SVI ATMF Implied TV"])[0]
+    theta = list(df_bis["ATMF Implied TV"])[0]
     tv_list = [
         calibration.eSSVI(k=k, theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                           eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
@@ -687,7 +695,7 @@ axs2[1, 0].set_title("SVI Durrleman Condition", fontsize=title_font_size)
 # Plot Fig2: SSVI Calibration (Durrleman Condition)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["SVI ATMF Implied TV"])[0]
+    theta = list(df_bis["ATMF Implied TV"])[0]
     k_list, g_list = calibration.SSVI_Durrleman_Condition(
         theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"])
     axs2[1, 1].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
@@ -699,7 +707,7 @@ axs2[1, 1].set_title("SSVI Durrleman Condition", fontsize=title_font_size)
 # Plot Fig2: eSSVI Calibration (Durrleman Condition)
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
-    theta = list(df_bis["SVI ATMF Implied TV"])[0]
+    theta = list(df_bis["ATMF Implied TV"])[0]
     k_list, g_list = calibration.eSSVI_Durrleman_Condition(
         theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
         eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"])
