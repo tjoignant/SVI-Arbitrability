@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import scipy.special as sc
 import scipy.optimize as optimize
 
 
@@ -783,14 +784,14 @@ def ZABR_u(x: float, eta_: float, rho_: float):
     return (1/eta_) * np.log((np.sqrt(1 - 2 * rho_ * eta_ * x + pow(eta_, 2) * pow(x, 2)) + eta_ * x - rho_) / (1 - rho_))
 
 
-def simple_ZABR(X0: float, K: float, vol: float, eta_: float, rho_: float, beta_: float):
+def ZABR_simple(X0: float, K: float, vol: float, eta_: float, rho_: float, beta_: float):
     """
     :param X0: spot (input)
     :param K: strike (input)
     :param vol: ATM implied volatility (input)
-    :param eta_: xx (param)
-    :param rho_: xx (param)
-    :param beta_: xx (param)
+    :param eta_: constant vol of vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param beta_: constant in local volatility function (param)
     :return: volatility
     """
     def sigma(x):
@@ -800,7 +801,7 @@ def simple_ZABR(X0: float, K: float, vol: float, eta_: float, rho_: float, beta_
     return (X0 - K) / (ZABR_u(x=pow(delta, -1) * integral, eta_=eta_, rho_=rho_))
 
 
-def simple_ZABR_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list, weights_list: list,
+def ZABR_simple_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list, weights_list: list,
                                       use_durrleman_cond: bool):
     """
     :param params_list: [eta_, rho_, beta_]
@@ -814,7 +815,7 @@ def simple_ZABR_minimisation_function(params_list: list, inputs_list: list, mktI
     SVE = 0
     for i in range(0, len(inputs_list)):
         SVE = SVE + weights_list[i] * pow(
-            simple_ZABR(X0=inputs_list[i][0], K=inputs_list[i][1], vol=inputs_list[i][2],
+            ZABR_simple(X0=inputs_list[i][0], K=inputs_list[i][1], vol=inputs_list[i][2],
                         eta_=params_list[0], rho_=params_list[1], beta_=params_list[2]) - mktImpVol_list[i], 2)
     MSVE = SVE / len(inputs_list)
     # Penality (Durrleman)
@@ -822,7 +823,7 @@ def simple_ZABR_minimisation_function(params_list: list, inputs_list: list, mktI
     return MSVE + penality
 
 
-def simple_ZABR_calibration(X0_list: list, K_list: list, vol_list: list, mktImpVol_list: list, weights_list: list,
+def ZABR_simple_calibration(X0_list: list, K_list: list, vol_list: list, mktImpVol_list: list, weights_list: list,
                             use_durrleman_cond: bool):
     """
     :param X0_list: [XO_1, XO_2, XO_3, ...]
@@ -836,7 +837,7 @@ def simple_ZABR_calibration(X0_list: list, K_list: list, vol_list: list, mktImpV
     init_params_list = [0.8, -0.5, -0.5]
     inputs_list = [(X0, K, vol) for X0, K, vol in zip(X0_list, K_list, vol_list)]
     result = optimize.minimize(
-        simple_ZABR_minimisation_function,
+        ZABR_simple_minimisation_function,
         x0=init_params_list,
         method='nelder-mead',
         args=(inputs_list, mktImpVol_list, weights_list, use_durrleman_cond),
@@ -850,40 +851,175 @@ def simple_ZABR_calibration(X0_list: list, K_list: list, vol_list: list, mktImpV
     }
 
 
-def simple_ZABR_skew(X0: float, K: float, vol: float, eta_: float, rho_: float, beta_: float):
+def ZABR_simple_skew(X0: float, K: float, vol: float, eta_: float, rho_: float, beta_: float):
     """
     :param X0: spot (input)
     :param K: strike (input)
     :param vol: ATM implied vol (input)
-    :param eta_: xx (param)
-    :param rho_: xx (param)
-    :param beta_: xx (param)
+    :param eta_: constant vol of vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param beta_: constant in local volatility function (param)
     :return: simple ZABR skew
     """
     K_neg_shifted = K - pow(10, -5)
     K_pos_shifted = K + pow(10, -5)
-    vol_sabr_neg_shifted = simple_ZABR(X0=X0, K=K_neg_shifted, vol=vol, eta_=eta_, rho_=rho_, beta_=beta_)
-    vol_sabr_pos_shifted = simple_ZABR(X0=X0, K=K_pos_shifted, vol=vol, eta_=eta_, rho_=rho_, beta_=beta_)
+    vol_sabr_neg_shifted = ZABR_simple(X0=X0, K=K_neg_shifted, vol=vol, eta_=eta_, rho_=rho_, beta_=beta_)
+    vol_sabr_pos_shifted = ZABR_simple(X0=X0, K=K_pos_shifted, vol=vol, eta_=eta_, rho_=rho_, beta_=beta_)
     return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
 
 
-def simple_ZABR_Durrleman_Condition(f: float, X0: float, vol: float, T: float, eta_: float, rho_: float, beta_: float,
+def ZABR_simple_Durrleman_Condition(f: float, X0: float, vol: float, T: float, eta_: float, rho_: float, beta_: float,
                                     min_k=-1, max_k=1, nb_k=200):
     """
     :param f: forward (input)
     :param X0: spot (input)
     :param vol: ATM implied vol (input)
     :param T: maturity (input)
-    :param eta_: xx (param)
-    :param rho_: xx (param)
-    :param beta_: xx (param)
+    :param eta_: constant vol of vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param beta_: constant in local volatility function (param)
     :param min_k: first log forward moneyness
     :param max_k: last log forward moneyness
     :param nb_k: number of log forward moneyness
     :return: g list [g1, g2, g3, ...]
     """
     k_list = np.linspace(min_k, max_k, nb_k)
-    vol_list = [simple_ZABR(X0=X0, K=f*np.exp(k), vol=vol, eta_=eta_, rho_=rho_, beta_=beta_) for k in k_list]
+    vol_list = [ZABR_simple(X0=X0, K=f*np.exp(k), vol=vol, eta_=eta_, rho_=rho_, beta_=beta_) for k in k_list]
+    tot_var_list = [T * pow(vol, 2) for vol in vol_list]
+    log_forward_skew_list = []
+    log_forward_convexity_list = []
+    new_tot_var_list = []
+    new_k_list = []
+    k_step = (max_k - min_k) / nb_k
+    for i in range(1, len(tot_var_list) - 1):
+        new_k_list.append(k_list[i])
+        new_tot_var_list.append(tot_var_list[i])
+        log_forward_skew_list.append((tot_var_list[i+1] - tot_var_list[i-1]) / (2 * k_step))
+        log_forward_convexity_list.append((tot_var_list[i + 1] - 2 * tot_var_list[i] + tot_var_list[i-1]) / pow(k_step, 2))
+    return new_k_list, Durrleman_Condition(k_list=new_k_list, tot_var_list=new_tot_var_list,
+                                           log_forward_skew_list=log_forward_skew_list,
+                                           log_forward_convexity_list=log_forward_convexity_list)
+
+
+def ZABR_double_beta(X0: float, K: float, vol: float, eta_: float, rho_: float, beta1_: float, beta2_: float,
+                     lambda_: float):
+    """
+    :param X0: spot (input)
+    :param K: strike (input)
+    :param vol: ATM implied volatility (input)
+    :param eta_: constant vol of vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param beta1_: constant in local volatility function (param)
+    :param beta2_: constant in local volatility function (param)
+    :param lambda_: constant in local volatility function (param)
+    :return: volatility
+    """
+    def sigma(x):
+        return 1 / (np.exp(-lambda_ * x) * pow(x, -beta1_) + (1 - np.exp(-lambda_ * x)) * pow(x, -beta2_))
+    def integral_fct(x):
+        return -pow(x, 1-beta2_) / (beta2_ - 1) - \
+               (pow(x, -beta1_) * pow(lambda_ * x, beta1_) * sc.gammainc(1 - beta1_, x * lambda_)) / lambda_ + \
+               (pow(x, -beta2_) * pow(lambda_ * x, beta2_) * sc.gammainc(1 - beta2_, x * lambda_)) / lambda_
+    integral = integral_fct(X0) - integral_fct(K)
+    delta = vol / sigma(X0)
+    return (X0 - K) / (ZABR_u(x=pow(delta, -1) * integral, eta_=eta_, rho_=rho_))
+
+
+def ZABR_double_beta_minimisation_function(params_list: list, inputs_list: list, mktImpVol_list: list,
+                                           weights_list: list, use_durrleman_cond: bool):
+    """
+    :param params_list: [eta_, rho_, beta1_, beta2_, lambda_]
+    :param inputs_list: [(XO_1, K_1, vol_1), (XO_2, K_2, vol_2), (XO_3, K_3, vol_3), ...]
+    :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibration error
+    """
+    # Mean Squared Error (MSE)
+    SVE = 0
+    for i in range(0, len(inputs_list)):
+        SVE = SVE + weights_list[i] * pow(
+            ZABR_double_beta(X0=inputs_list[i][0], K=inputs_list[i][1], vol=inputs_list[i][2],
+                             eta_=params_list[0], rho_=params_list[1], beta1_=params_list[2], beta2_=params_list[3],
+                             lambda_=params_list[4]) - mktImpVol_list[i], 2)
+    MSVE = SVE / len(inputs_list)
+    # Penality (Durrleman)
+    penality = 0
+    return MSVE + penality
+
+
+def ZABR_double_beta_calibration(X0_list: list, K_list: list, vol_list: list, mktImpVol_list: list, weights_list: list,
+                                 use_durrleman_cond: bool):
+    """
+    :param X0_list: [XO_1, XO_2, XO_3, ...]
+    :param K_list: [K_1, K_2, K_3, ...]
+    :param vol_list: [vol_1, vol_2, vol_3, ...]
+    :param mktImpVol_list: [ImpVol_1, ImpVol_2, ImpVol_3, ...]
+    :param weights_list: [w_1, w_2, w_3, ...]
+    :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
+    :return: calibrated parameters dict {eta_, rho_, beta1_, beta2_, lambda_}
+    """
+    init_params_list = [0.96, -0.45, -1.4, -1.45, 0.001]
+    inputs_list = [(X0, K, vol) for X0, K, vol in zip(X0_list, K_list, vol_list)]
+    result = optimize.minimize(
+        ZABR_double_beta_minimisation_function,
+        x0=init_params_list,
+        method='nelder-mead',
+        args=(inputs_list, mktImpVol_list, weights_list, use_durrleman_cond),
+        tol=1e-8,
+    )
+    final_params = list(result.x)
+    return {
+        "eta_": final_params[0],
+        "rho_": final_params[1],
+        "beta1_": final_params[2],
+        "beta2_": final_params[3],
+        "lambda_": final_params[4],
+    }
+
+
+def ZABR_double_beta_skew(X0: float, K: float, vol: float, eta_: float, rho_: float, beta1_: float, beta2_: float,
+                          lambda_: float):
+    """
+    :param X0: spot (input)
+    :param K: strike (input)
+    :param vol: ATM implied vol (input)
+    :param eta_: constant vol of vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param beta1_: constant in local volatility function (param)
+    :param beta2_: constant in local volatility function (param)
+    :param lambda_: constant in local volatility function (param)
+    :return: simple ZABR skew
+    """
+    K_neg_shifted = K - pow(10, -5)
+    K_pos_shifted = K + pow(10, -5)
+    vol_sabr_neg_shifted = ZABR_double_beta(X0=X0, K=K_neg_shifted, vol=vol, eta_=eta_, rho_=rho_, beta1_=beta1_,
+                                            beta2_=beta2_, lambda_=lambda_)
+    vol_sabr_pos_shifted = ZABR_double_beta(X0=X0, K=K_pos_shifted, vol=vol, eta_=eta_, rho_=rho_, beta1_=beta1_,
+                                            beta2_=beta2_, lambda_=lambda_)
+    return (vol_sabr_pos_shifted - vol_sabr_neg_shifted) / (K_pos_shifted - K_neg_shifted)
+
+
+def ZABR_double_beta_Durrleman_Condition(f: float, X0: float, vol: float, T: float, eta_: float, rho_: float,
+                                         beta1_: float, beta2_: float, lambda_: float, min_k=-1, max_k=1, nb_k=200):
+    """
+    :param f: forward (input)
+    :param X0: spot (input)
+    :param vol: ATM implied vol (input)
+    :param T: maturity (input)
+    :param eta_: constant vol of vol (param)
+    :param rho_: spot vol constant correlation (param)
+    :param beta1_: constant in local volatility function (param)
+    :param beta2_: constant in local volatility function (param)
+    :param lambda_: constant in local volatility function (param)
+    :param min_k: first log forward moneyness
+    :param max_k: last log forward moneyness
+    :param nb_k: number of log forward moneyness
+    :return: g list [g1, g2, g3, ...]
+    """
+    k_list = np.linspace(min_k, max_k, nb_k)
+    vol_list = [ZABR_double_beta(X0=X0, K=f*np.exp(k), vol=vol, eta_=eta_, rho_=rho_, beta1_=beta1_, beta2_=beta2_,
+                                 lambda_=lambda_) for k in k_list]
     tot_var_list = [T * pow(vol, 2) for vol in vol_list]
     log_forward_skew_list = []
     log_forward_convexity_list = []
