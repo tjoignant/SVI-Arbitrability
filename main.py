@@ -24,10 +24,10 @@ tick_font_size = 8.5
 title_font_size = 11
 nb_options_text = []
 legend_loc = "upper right"
-use_durrleman_cond = False
+use_durrleman_cond = True
 start = time.perf_counter()
 spot_date = dt.datetime(day=7, month=10, year=2022)
-log_forward_moneyness_min, log_forward_moneyness_max = -0.75, 0.75
+log_forward_moneyness_min, log_forward_moneyness_max = -0.65, 0.65
 strike_list = [2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100]
 color_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
               'tab:olive', 'tab:cyan']
@@ -49,6 +49,7 @@ df = pd.concat(df_list)
 # Set Spot Value & Date
 df["Spot"] = spot
 df["Spot Date"] = spot_date
+df["Spot Perc"] = 1
 
 # Remove Low Volume Options
 df = df[df["Volm"] >= min_volume].copy()
@@ -191,7 +192,7 @@ df["Forward"] = df["Forward Perc"] * spot
 
 # Add Remaining Nb Options
 nb_options.append(len(df.index))
-nb_options_text.append("Forward+ZC")
+nb_options_text.append("Fwd+ZC")
 
 # Remove ITM Options
 df = df[((df["Type"] == "Call") & (df["Strike"] >= spot)) | ((df["Type"] == "Put") & (df["Strike"] <= spot))].copy()
@@ -201,24 +202,17 @@ nb_options.append(len(df.index))
 nb_options_text.append("ITM Opt.")
 
 # Compute Implied Volatilities
-df["Implied Vol (Newton-Raphson)"] = df.apply(
+df["Implied Vol"] = df.apply(
     lambda x: black_scholes.BS_IV_Newton_Raphson(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
                                                  MktPrice=x["Mid Perc"], df=x["ZC Perc"], OptType=x["Type"][0])[0],
     axis=1)
-df["Implied Vol (Brent)"] = df.apply(
-    lambda x: black_scholes.BS_IV_Brent(f=x["Forward Perc"], k=x["Strike Perc"], t=x["Maturity (in Y)"],
-                                        MktPrice=x["Mid Perc"], df=x["ZC Perc"], OptType=x["Type"][0])[0], axis=1)
 
-# Set Brent Implied Volatilities
-df["Implied Vol"] = df["Implied Vol (Brent)"]
+# Drop Implied Vol Errors
+df = df[df["Implied Vol"] != -1].copy()
 
 # Add Remaining Nb Options
-nb_options_brent = nb_options + [len(df[df["Implied Vol (Brent)"] != -1].index)]
-nb_options_nr = nb_options + [len(df[df["Implied Vol (Newton-Raphson)"] != -1].index)]
-nb_options_text.append("Implied Vol.")
-
-# Drop Implied Vol Error Points
-df = df[df["Implied Vol"] != -1].copy()
+nb_options = nb_options + [len(df["Implied Vol"].index)]
+nb_options_text.append("Impl. Vol")
 
 # Reorder Dataframe
 df = df.sort_values(by=["Maturity", "Strike"], ascending=[True, True])
@@ -293,9 +287,20 @@ for maturity in df["Maturity"].unique():
     )
     df.loc[df["Maturity"] == maturity, ['SABR Params']] = [SABR_params] * len(df_mat.index)
 
+# Calibrate Simple ZABR Surface
+ZABR_s_params = calibration.simple_ZABR_calibration(
+    X0_list=list(df["Spot Perc"]),
+    K_list=list(df["Strike Perc"]),
+    vol_list=list(df["ATM Implied Vol"]),
+    mktImpVol_list=list(df["Implied Vol"]),
+    weights_list=list(df["Weight"]),
+    use_durrleman_cond=use_durrleman_cond,
+)
+df['ZABR_s Params'] = [ZABR_s_params] * len(df.index)
+
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ SVI, SSVI, eSSVI & SABR Calibrated ({round(end - start, 1)}s)")
+print(f"{timer_id}/ SVI, SSVI, eSSVI, SABR & ZABR_s Calibrated ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -324,9 +329,13 @@ df["eSSVI TV"] = df.apply(lambda x:
                           calibration.eSSVI(k=x["Log Forward Moneyness"], theta=x["ATMF Implied TV"],
                                             a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                                             eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]), axis=1)
+df["ZABR_s TV"] = df.apply(lambda x:
+                          pow(calibration.simple_ZABR(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATM Implied Vol"],
+                                                  eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
+                                                  beta_=ZABR_s_params["beta_"]), 2) * x["Maturity (in Y)"], axis=1)
 
 # Compute BS Absolute Volatility & BS Price Errors (in %)
-for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"]:
     df[f"{surface} Vol"] = df.apply(lambda x: np.sqrt(x[f"{surface} TV"] / x["Maturity (in Y)"]), axis=1)
     df[f"{surface} Vol Error Perc"] = df.apply(lambda x: abs(x[f"{surface} Vol"] - x["Implied Vol"]) * 100, axis=1)
     df[f"{surface} Price Error Perc"] = \
@@ -343,8 +352,10 @@ df_essvi_vol_error_surface, essvi_min, essvi_max = utils.create_surface(df=df, c
                                                                         strike_list=strike_list)
 df_sabr_vol_error_surface, sabr_min, sabr_max = utils.create_surface(df=df, column_name="SABR Vol Error Perc",
                                                                         strike_list=strike_list)
-vol_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min)
-vol_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max)
+df_zabr_s_vol_error_surface, zabr_s_min, zabr_s_max = utils.create_surface(df=df, column_name="ZABR_s Vol Error Perc",
+                                                                        strike_list=strike_list)
+vol_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min)
+vol_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max, zabr_s_max)
 
 # Compute Absolute BS Price Error Surfaces
 df_svi_price_error_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI Price Error Perc",
@@ -355,8 +366,10 @@ df_essvi_price_error_surface, essvi_min, essvi_max = utils.create_surface(df=df,
                                                                           strike_list=strike_list)
 df_sabr_price_error_surface, sabr_min, sabr_max = utils.create_surface(df=df, column_name="SABR Price Error Perc",
                                                                           strike_list=strike_list)
-price_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min)
-price_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max)
+df_zabr_s_price_error_surface, zabr_s_min, zabr_s_max = utils.create_surface(df=df, column_name="ZABR_s Price Error Perc",
+                                                                          strike_list=strike_list)
+price_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min)
+price_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max, zabr_s_max)
 
 # Timer
 end = time.perf_counter()
@@ -368,15 +381,19 @@ timer_id = timer_id + 1
 for maturity in df["Maturity"].unique():
     df_mat = df[(df["Maturity"] == maturity)].copy()
     SVI_params = list(df_mat["SVI Params"])[0]
+    SABR_params = list(df_mat["SABR Params"])[0]
     df.loc[df["Maturity"] == maturity, ['SVI Skew']] = df[df["Maturity"] == maturity].apply(
         lambda x: calibration.SVI_skew(strike=x["Strike Perc"], forward=x["Forward Perc"], a_=SVI_params["a_"],
                                        maturity=x["Maturity (in Y)"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                                        m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]), axis=1)
-    SABR_params = list(df_mat["SABR Params"])[0]
     df.loc[df["Maturity"] == maturity, ['SABR Skew']] = df[df["Maturity"] == maturity].apply(
         lambda x: calibration.SABR_skew(f=x["Forward Perc"], K=x["Strike Perc"], T=x["Maturity (in Y)"],
                                         alpha_=SABR_params["alpha_"], rho_=SABR_params["rho_"],
                                         nu_=SABR_params["nu_"]), axis=1)
+    df.loc[df["Maturity"] == maturity, ['ZABR_s Skew']] = df[df["Maturity"] == maturity].apply(
+        lambda x: calibration.simple_ZABR_skew(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATM Implied Vol"],
+                                        eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
+                                        beta_=ZABR_s_params["beta_"]), axis=1)
 
 df["SSVI Skew"] = df.apply(lambda x:
                            calibration.SSVI_skew(strike=x["Strike Perc"], theta=x["ATMF Implied TV"],
@@ -389,6 +406,11 @@ df["eSSVI Skew"] = df.apply(lambda x:
                                                    forward=x["Forward Perc"], eta_=eSSVI_params["eta_"],
                                                    lambda_=eSSVI_params["lambda_"], b_=eSSVI_params["b_"],
                                                    c_=eSSVI_params["c_"], ), axis=1)
+df["ZABR_s Skew"] = df.apply(lambda x:
+                             calibration.simple_ZABR_skew(X0=x["Spot Perc"], K=x["Strike Perc"],
+                                                          vol=x["ATM Implied Vol"], eta_=ZABR_s_params["eta_"],
+                                                          rho_=ZABR_s_params["rho_"], beta_=ZABR_s_params["beta_"]),
+                                                          axis=1)
 
 # Compute Skew Surfaces
 df_svi_skew_surface, svi_min, svi_max = utils.create_surface(
@@ -399,8 +421,10 @@ df_essvi_skew_surface, essvi_min, essvi_max = utils.create_surface(
     df=df, column_name="eSSVI Skew", strike_list=strike_list)
 df_sabr_skew_surface, sabr_min, sabr_max = utils.create_surface(
     df=df, column_name="SABR Skew", strike_list=strike_list)
-skew_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min)
-skew_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_min)
+df_zabr_s_skew_surface, zabr_s_min, zabr_s_max = utils.create_surface(
+    df=df, column_name="ZABR_s Skew", strike_list=strike_list)
+skew_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min)
+skew_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_min, zabr_s_max)
 
 # Compute Call/Put Bis Mid Price (Call-Put Parity)
 df["Call Bis Type"] = "Call"
@@ -450,12 +474,13 @@ smin_surface_min = min(smin_min, smax_min)
 smin_surface_max = max(smin_max, smax_max)
 
 # Compute Shark-Jaw Skew Bounds Test
-for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"]:
     df[f"{surface} Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x[f"{surface} Skew"] < x["s_max"]
                                                         else 1, axis=1)
 
 # Compute Absolute Calibration Arbitrability Scores (ACA Skew Bounds)
-df_aca_skew_bounds = pd.DataFrame(index=df["Pretty Maturity"].unique(), columns=["SVI", "SSVI", "eSSVI", "SABR"])
+df_aca_skew_bounds = pd.DataFrame(index=df["Pretty Maturity"].unique(),
+                                  columns=["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"])
 for col in df_aca_skew_bounds.columns:
     for maturity in df["Pretty Maturity"].unique():
         df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
@@ -463,23 +488,25 @@ for col in df_aca_skew_bounds.columns:
     df_aca_skew_bounds.loc["Overall", f"{col}"] = round((1 - df[f'{col} Bounds Test'].mean()) * 10, 2)
 
 # Compute Arbitrability Surfaces (Skew Bounds)
-df_svi_bounds_arb_surface, svi_min, svi_max = utils.create_surface(
+df_svi_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="SVI Bounds Test", strike_list=strike_list)
-df_ssvi_bounds_arb_surface, ssvi_min, ssvi_max = utils.create_surface(
+df_ssvi_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="SSVI Bounds Test", strike_list=strike_list)
-df_essvi_bounds_arb_surface, essvi_min, essvi_max = utils.create_surface(
+df_essvi_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="eSSVI Bounds Test", strike_list=strike_list)
-df_sabr_bounds_arb_surface, sabr_min, sabr_max = utils.create_surface(
+df_sabr_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="SABR Bounds Test", strike_list=strike_list)
+df_zabr_s_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
+    df=df, column_name="ZABR_s Bounds Test", strike_list=strike_list)
 
 # Compute European Binary Prices (BEUI/BEDI)
-for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"]:
     df[f"{surface} BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] +
                                                   x["Call Bis Vega"] * x[f"{surface} Skew"]), axis=1)
     df[f"{surface} BEDI"] = 1 - df[f"{surface} BEUI"]
 
 # Compute Call/Put Triangles
-for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"]:
     for maturity in df["Maturity"].unique():
         cond = (df["Maturity"] == maturity)
         df_bis = df[cond].copy()
@@ -491,14 +518,15 @@ for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
                 df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis[f"{surface} BEDI"]
 
 # Compute Shark-Jaw Call/Put Triangles Test
-for surface in ["SVI", "SSVI", "eSSVI", "SABR"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"]:
     df[f"{surface} Triangles Test"] = df.apply(lambda x: 0
         if (x[f"{surface} CT"] > 0 and x[f"{surface} PT"] > 0) else 0
             if (pd.isna(x[f"{surface} CT"]) and x[f"{surface} PT"] > 0) else 0
                 if (x[f"{surface} CT"] > 0 and pd.isna(x[f"{surface} PT"])) else 1, axis=1)
 
 # Compute Absolute Calibration Arbitrability Scores (ACA Call/Put Triangles)
-df_aca_call_triangles = pd.DataFrame(index=df["Pretty Maturity"].unique(), columns=["SVI", "SSVI", "eSSVI", "SABR"])
+df_aca_call_triangles = pd.DataFrame(index=df["Pretty Maturity"].unique(),
+                                     columns=["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s"])
 for col in df_aca_call_triangles.columns:
     for maturity in df["Pretty Maturity"].unique():
         df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
@@ -506,14 +534,16 @@ for col in df_aca_call_triangles.columns:
     df_aca_call_triangles.loc["Overall", f"{col}"] = round((1 - df[f'{col} Triangles Test'].mean()) * 10, 2)
 
 # Compute Arbitrability Surfaces (Call/Put Triangles)
-df_svi_triangles_arb_surface, svi_min, svi_max = utils.create_surface(
+df_svi_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="SVI Triangles Test", strike_list=strike_list)
-df_ssvi_triangles_arb_surface, ssvi_min, ssvi_max = utils.create_surface(
+df_ssvi_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="SSVI Triangles Test", strike_list=strike_list)
-df_essvi_triangles_arb_surface, essvi_min, essvi_max = utils.create_surface(
+df_essvi_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="eSSVI Triangles Test", strike_list=strike_list)
-df_sabr_triangles_arb_surface, sabr_min, sabr_max = utils.create_surface(
+df_sabr_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="SABR Triangles Test", strike_list=strike_list)
+df_zabr_s_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
+    df=df, column_name="ZABR_s Triangles Test", strike_list=strike_list)
 
 # Timer
 end = time.perf_counter()
@@ -521,37 +551,66 @@ print(f"{timer_id}/ Shark-Jaw Test : Skew Bounds + Call/Put Triangles ({round(en
 start = end
 timer_id = timer_id + 1
 
+# Set Log Forward Moneyness List
+k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 150)
+
 # Create Graphs Figure
-fig1, axs1 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5))
-fig2, axs2 = plt.subplots(nrows=2, ncols=4, figsize=(15, 7.5))
-fig3, axs3 = plt.subplots(nrows=2, ncols=4, figsize=(15, 7.5), sharey=True)
-fig4, axs4 = plt.subplots(nrows=2, ncols=3, figsize=(15, 7.5), sharey=True)
-fig5, axs5 = plt.subplots(nrows=2, ncols=4, figsize=(15, 7.5), sharey=True)
+fig1 = plt.figure(figsize=(15, 7.5))
+fig2 = plt.figure(figsize=(15, 7.5))
+fig3 = plt.figure(figsize=(15, 7.5))
+fig4 = plt.figure(figsize=(15, 7.5))
+fig5 = plt.figure(figsize=(15, 7.5))
 
-# Set Graphs Figure Title
-fig1.suptitle(f"Market Data ({spot_date.strftime('%d-%b-%Y')})",
-              fontweight='bold', fontsize=12.5)
-fig2.suptitle(f"Calibration Results ({spot_date.strftime('%d-%b-%Y')})",
-              fontweight='bold', fontsize=12.5)
-fig3.suptitle(f"Calibrated Vol. Errors ({spot_date.strftime('%d-%b-%Y')})",
-              fontweight='bold', fontsize=12.5)
-fig4.suptitle(f"Calibrated Vol. Skew ({spot_date.strftime('%d-%b-%Y')})",
-              fontweight='bold', fontsize=12.5)
-fig5.suptitle(f"Shark-Jaw Arbitograms ({spot_date.strftime('%d-%b-%Y')})",
-              fontweight='bold', fontsize=12.5)
-
-# Plot Fig1: Number of Options Per Steps
-nb_options_text.append("Calibration")
-nb_options_nr.append(nb_options_nr[-1])
-nb_options_brent.append(nb_options_brent[-1])
-axs1[0, 0].step(nb_options_text, nb_options_nr, "--", where='post', label="Newton Raphson")
-axs1[0, 0].step(nb_options_text, nb_options_brent, where='post', label="Brent")
-axs1[0, 0].set_title("Option Number Per Steps", fontsize=title_font_size)
-axs1[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[0, 0].legend(loc=legend_loc)
-axs1[0, 0].grid()
-
-# Plot Fig1: Implied Forward & ZC
+# Figure 1 - "1_Market_Data"
+fig_rows = fig1.subfigures(nrows=2, ncols=1)
+# Figure 1 - Row 1 - ""
+fig_row = fig_rows[0]
+fig_row.suptitle(f'', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=3)
+# Figure 1 - Row 1 - Col 1 - "Number of Options Per Steps"
+ax = fig_row_axs[0]
+nb_options_text.append("Final")
+nb_options.append(nb_options[-1])
+ax.step(nb_options_text, nb_options, "--", where='post')
+ax.set_title("Option Number Per Steps", fontsize=title_font_size)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.grid()
+# Figure 1 - Row 1 - Col 2 - Market Implied Total Variance
+ax = fig_row_axs[1]
+percentage = 65
+for strike in df["Strike"].unique():
+    df_strike = df[(df["Strike"] == strike)].copy()
+    if len(df_strike["Maturity"].unique()) >= percentage / 100 * len(df["Maturity"].unique()):
+        total_implied_var = []
+        for maturity in df_strike["Maturity"].unique():
+            df_bis = df[(df["Strike"] == strike) & (df["Maturity"] == maturity)].copy()
+            total_implied_var.append(df_bis["Implied TV"].unique())
+        ax.plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
+ax.grid()
+ax.legend(loc=legend_loc)
+ax.set_title("Market Implied Total Variances", fontsize=title_font_size)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.xaxis.set_major_formatter(DateFormatter("%b-%y"))
+ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+# Figure 1 - Row 1 - Col 3 - Market Implied Deltas Strike
+ax = fig_row_axs[2]
+for maturity, i in zip(df["Pretty Maturity"].unique(), range(0, len(df["Pretty Maturity"].unique()))):
+    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
+    df_bis = df_bis.sort_values(by="Strike", ascending=False)
+    df_put_bis = df_bis[(df_bis["Type"] == "Put")].copy()
+    df_call_bis = df_bis[(df_bis["Type"] == "Call")].copy()
+    ax.plot(df_put_bis["Strike"], df_put_bis["Implied Delta Strike"], label=maturity, color=color_list[i])
+    ax.plot(df_call_bis["Strike"], df_call_bis["Implied Delta Strike"], color=color_list[i])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Market Implied Deltas Strike", fontsize=title_font_size)
+ax.legend(loc=legend_loc)
+# Figure 1 - Row 2 - ""
+fig_row = fig_rows[1]
+fig_row.suptitle(f'', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=3)
+# Figure 1 - Row 2 - Col 1 - Market Implied Forward & ZC
+ax = fig_row_axs[0]
 maturity_list = []
 forward_list = []
 zc_list = []
@@ -560,111 +619,81 @@ for maturity in df["Maturity"].unique():
     forward_list.append(list(df_bis["Forward Perc"].unique())[0])
     zc_list.append(list(df_bis["ZC Perc"].unique())[0])
     maturity_list.append(maturity)
-axs1[1, 0].plot(maturity_list, forward_list, label="Forward (in %)")
-axs1[1, 0].plot(maturity_list, zc_list, label="ZC")
-axs1[1, 0].set_title(f"Market Implied Forward & ZC", fontsize=title_font_size)
-axs1[1, 0].legend(loc="upper right")
-axs1[1, 0].grid()
-axs1[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[1, 0].xaxis.set_major_formatter(DateFormatter("%b-%y"))
-axs1[1, 0].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-
-# Plot Fig1: Implied Total Variance
-percentage = 70
-for strike in df["Strike"].unique():
-    df_strike = df[(df["Strike"] == strike)].copy()
-    if len(df_strike["Maturity"].unique()) >= percentage / 100 * len(df["Maturity"].unique()):
-        total_implied_var = []
-        for maturity in df_strike["Maturity"].unique():
-            df_bis = df[(df["Strike"] == strike) & (df["Maturity"] == maturity)].copy()
-            total_implied_var.append(df_bis["Implied TV"].unique())
-        axs1[0, 1].plot(df_strike["Maturity"].unique(), total_implied_var, label=strike)
-axs1[0, 1].grid()
-axs1[0, 1].legend(loc=legend_loc)
-axs1[0, 1].set_title("Market Implied Total Variances", fontsize=title_font_size)
-axs1[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[0, 1].xaxis.set_major_formatter(DateFormatter("%b-%y"))
-axs1[0, 1].xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-
-# Plot Fig1: Market Implied Volatilities
+ax.plot(maturity_list, forward_list, label="Forward (in %)")
+ax.plot(maturity_list, zc_list, label="ZC")
+ax.set_title(f"Market Implied Forward & ZC", fontsize=title_font_size)
+ax.legend(loc="upper right")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.xaxis.set_major_formatter(DateFormatter("%b-%y"))
+ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+# Figure 1 - Row 2 - Col 2 - Market Implied Volatilities
+ax = fig_row_axs[1]
 for maturity in df["Pretty Maturity"].unique():
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
-    axs1[1, 1].plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
-axs1[1, 1].scatter(df["Strike"], df["IVM"] / 100, marker=".", color="black", label="BBG IV")
-axs1[1, 1].grid()
-axs1[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[1, 1].set_title("Market Implied Volatilities", fontsize=title_font_size)
-axs1[1, 1].legend(loc=legend_loc)
-
-# Plot Fig1: Market Implied Delta Strike
-for maturity, i in zip(df["Pretty Maturity"].unique(), range(0, len(df["Pretty Maturity"].unique()))):
-    df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
-    df_bis = df_bis.sort_values(by="Strike", ascending=False)
-    df_put_bis = df_bis[(df_bis["Type"] == "Put")].copy()
-    df_call_bis = df_bis[(df_bis["Type"] == "Call")].copy()
-    axs1[0, 2].plot(df_put_bis["Strike"], df_put_bis["Implied Delta Strike"], label=maturity, color=color_list[i])
-    axs1[0, 2].plot(df_call_bis["Strike"], df_call_bis["Implied Delta Strike"], color=color_list[i])
-axs1[0, 2].grid()
-axs1[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[0, 2].set_title("Market Implied Deltas Strike", fontsize=title_font_size)
-axs1[0, 2].legend(loc=legend_loc)
-
-# Plot Fig1: Market Implied Vegas
+    ax.plot(df_bis["Strike"], df_bis["Implied Vol"], label=maturity)
+ax.scatter(df["Strike"], df["IVM"] / 100, marker=".", color="black", label="BBG IV")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Market Implied Volatilities", fontsize=title_font_size)
+ax.legend(loc=legend_loc)
+# Figure 1 - Row 2 - Col 3 - Market Implied Vegas
+ax = fig_row_axs[2]
 for maturity in df["Pretty Maturity"].unique():
     df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
     df_bis = df_bis.sort_values(by="Strike", ascending=False)
-    axs1[1, 2].plot(df_bis["Strike"], df_bis["Implied Vega"], label=maturity)
-axs1[1, 2].grid()
-axs1[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs1[1, 2].set_title("Market Implied Vegas", fontsize=title_font_size)
-axs1[1, 2].legend(loc=legend_loc)
+    ax.plot(df_bis["Strike"], df_bis["Implied Vega"], label=maturity)
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Market Implied Vegas", fontsize=title_font_size)
+ax.legend(loc=legend_loc)
 
-# Plot Fig2: SVI Calibration (Implied TV)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+# Figure 2 - "2_Calibration_Results"
+fig_rows = fig2.subfigures(nrows=2, ncols=1)
+# Figure 2 - Row 1 - "Total Variance"
+fig_row = fig_rows[0]
+fig_row.suptitle(f'Total Variance', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+# Figure 2 - Row 1 - Col 1 - SVI
+ax = fig_row_axs[0]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     SVI_params = list(df_bis["SVI Params"])[0]
     tv_list = [calibration.SVI(k=k, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                                 m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]) for k in k_list]
-    axs2[0, 0].plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[0, 0].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
-axs2[0, 0].grid()
-axs2[0, 0].legend(loc=legend_loc)
-axs2[0, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[0, 0].set_title("SVI Implied TV", fontsize=title_font_size)
-
-# Plot Fig2: SSVI Calibration (Implied TV)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SVI", fontsize=title_font_size)
+# Figure 2 - Row 1 - Col 2 - SSVI
+ax = fig_row_axs[1]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
     tv_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
                                   lambda_=SSVI_params["lambda_"]) for k in k_list]
-    axs2[0, 1].plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[0, 1].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
-axs2[0, 1].grid()
-axs2[0, 1].legend(loc=legend_loc)
-axs2[0, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[0, 1].set_title("SSVI Implied TV", fontsize=title_font_size)
-
-# Plot Fig2: eSSVI Calibration (Implied TV)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SSVI", fontsize=title_font_size)
+# Figure 2 - Row 1 - Col 3 - eSSVI
+ax = fig_row_axs[2]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
     tv_list = [
         calibration.eSSVI(k=k, theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                           eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
-    axs2[0, 2].plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[0, 2].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
-axs2[0, 2].grid()
-axs2[0, 2].legend(loc=legend_loc)
-axs2[0, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[0, 2].set_title("eSSVI Implied TV", fontsize=title_font_size)
-
-# Plot Fig2: SABR Calibration (Implied TV)
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 400)
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("eSSVI", fontsize=title_font_size)
+# Figure 2 - Row 1 - Col 4 - SABR
+ax = fig_row_axs[3]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     SABR_params = list(df_bis["SABR Params"])[0]
@@ -672,52 +701,72 @@ for maturity in df["Maturity"].unique():
     forward = list(df_bis["Forward Perc"])[0]
     tv_list = [pow(calibration.SABR(f=forward, K=forward * np.exp(k), T=maturity, alpha_=SABR_params["alpha_"],
                                 rho_=SABR_params["rho_"], nu_=SABR_params["nu_"]), 2) * maturity for k in k_list]
-    axs2[0, 3].plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    axs2[0, 3].scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
-axs2[0, 3].grid()
-axs2[0, 3].legend(loc=legend_loc)
-axs2[0, 3].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[0, 3].set_title("SABR Implied TV", fontsize=title_font_size)
-
-# Plot Fig2: SVI Calibration (Durrleman Condition)
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SABR", fontsize=title_font_size)
+# Figure 2 - Row 1 - Col 5 - Simple ZABR
+ax = fig_row_axs[4]
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    tv_list = [
+        pow(calibration.simple_ZABR(
+            X0=1, K=forward * np.exp(k), vol=atm_vol, eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
+            beta_=ZABR_s_params["beta_"]), 2) * maturity for k in k_list]
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Simple ZABR", fontsize=title_font_size)
+# Figure 2 - Row 1 - Col 6 - ZABR Double Beta
+ax = fig_row_axs[5]
+# Figure 2 - Row 1 - Col 7 - Double ZABR Double
+ax = fig_row_axs[6]
+# Figure 2 - Row 2 - "Durrleman Density"
+fig_row = fig_rows[1]
+fig_row.suptitle(f'Durrleman Density', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+# Figure 2 - Row 2 - Col 1 - SVI
+ax = fig_row_axs[0]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     SVI_params = list(df_bis["SVI Params"])[0]
     k_list, g_list = calibration.SVI_Durrleman_Condition(
         a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"], m_=SVI_params["m_"],
         sigma_=SVI_params["sigma_"])
-    axs2[1, 0].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
-axs2[1, 0].grid()
-axs2[1, 0].legend(loc=legend_loc)
-axs2[1, 0].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 0].set_title("SVI Durrleman Condition", fontsize=title_font_size)
-
-# Plot Fig2: SSVI Calibration (Durrleman Condition)
+    ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SVI", fontsize=title_font_size)
+# Figure 2 - Row 2 - Col 2 - SSVI
+ax = fig_row_axs[1]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
     k_list, g_list = calibration.SSVI_Durrleman_Condition(
         theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"])
-    axs2[1, 1].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
-axs2[1, 1].grid()
-axs2[1, 1].legend(loc=legend_loc)
-axs2[1, 1].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 1].set_title("SSVI Durrleman Condition", fontsize=title_font_size)
-
-# Plot Fig2: eSSVI Calibration (Durrleman Condition)
+    ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SSVI", fontsize=title_font_size)
+# Figure 2 - Row 2 - Col 3 - eSSVI
+ax = fig_row_axs[2]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
     k_list, g_list = calibration.eSSVI_Durrleman_Condition(
         theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
         eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"])
-    axs2[1, 2].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
-axs2[1, 2].grid()
-axs2[1, 2].legend(loc=legend_loc)
-axs2[1, 2].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 2].set_title("eSSVI Durrleman Condition", fontsize=title_font_size)
-
-# Plot Fig2: SABR Calibration (Durrleman Condition)
+    ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("eSSVI", fontsize=title_font_size)
+# Figure 2 - Row 2 - Col 4 - SABR
+ax = fig_row_axs[3]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     SABR_params = list(df_bis["SABR Params"])[0]
@@ -725,107 +774,159 @@ for maturity in df["Maturity"].unique():
     forward = list(df_bis["Forward Perc"])[0]
     k_list, g_list = calibration.SABR_Durrleman_Condition(f=forward, T=maturity, alpha_=SABR_params["alpha_"],
                                                           rho_=SABR_params["rho_"], nu_=SABR_params["nu_"])
-    axs2[1, 3].plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
-axs2[1, 3].grid()
-axs2[1, 3].legend(loc=legend_loc)
-axs2[1, 3].tick_params(axis='both', which='major', labelsize=tick_font_size)
-axs2[1, 3].set_title("SABR Durrleman Condition", fontsize=title_font_size)
+    ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SABR", fontsize=title_font_size)
+# Figure 2 - Row 2 - Col 5 - SABR
+ax = fig_row_axs[4]
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    k_list, g_list = calibration.simple_ZABR_Durrleman_Condition(f=forward, T=maturity, X0=1, vol=atm_vol,
+                                                                 eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
+                                                                 beta_=ZABR_s_params["beta_"])
+    ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Simple ZABR", fontsize=title_font_size)
+# Figure 2 - Row 2 - Col 6 - ZABR Double Beta
+ax = fig_row_axs[5]
+# Figure 2 - Row 2 - Col 7 - Double ZABR Double
+ax = fig_row_axs[6]
+# Figure 2 - Legend
+lines, labels = fig2.subfigs[0].axes[0].get_legend_handles_labels()
+fig_rows[0].subplots_adjust(bottom=0.12, left=0.05, right=0.95)
+fig_rows[1].subplots_adjust(bottom=0.17)
+fig_rows[1].legend(lines, labels, ncol=len(labels), loc="lower center")
 
-# Plot Fig3: Calibrated Volatility Error Surfaces
-g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 0], cbar=False, annot=True,
-                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
-g2 = sns.heatmap(df_ssvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 1], cbar=False, annot=True,
-                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
-g3 = sns.heatmap(df_essvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 2], cbar=False, annot=True,
-                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
-g4 = sns.heatmap(df_sabr_vol_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[0, 3], cbar=True, annot=True,
-                 vmin=vol_error_surface_min, vmax=vol_error_surface_max)
-for g, ax, name in zip([g1, g2, g3, g4], [axs3[0, 0], axs3[0, 1], axs3[0, 2], axs3[0, 3]], ["SVI", "SSVI", "eSSVI", "SABR"]):
+# Figure 3 - "3_Calibrated Volatility Error"
+fig_rows = fig3.subfigures(nrows=2, ncols=1)
+# Figure 3 - Row 1 - "Volatility Errors"
+fig_row = fig_rows[0]
+fig_row.suptitle(f'Volatility Errors (in %)', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+g1 = sns.heatmap(df_svi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=False, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
+g2 = sns.heatmap(df_ssvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[1], cbar=False, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
+g3 = sns.heatmap(df_essvi_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[2], cbar=False, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
+g4 = sns.heatmap(df_sabr_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
+g5 = sns.heatmap(df_zabr_s_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=True, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Vol. Error (in %)", fontsize=title_font_size)
+    ax.set_title(f"{name}", fontsize=title_font_size)
+    g.set_ylabel('')
+    g.set_xlabel('')
+    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
+    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+# Figure 3 - Row 2 - "BS Price Errors"
+fig_row = fig_rows[1]
+fig_row.suptitle(f'BS Price Errors (in %)', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+g1 = sns.heatmap(df_svi_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=False, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
+g2 = sns.heatmap(df_ssvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[1], cbar=False, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
+g3 = sns.heatmap(df_essvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[2], cbar=False, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
+g4 = sns.heatmap(df_sabr_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
+g5 = sns.heatmap(df_zabr_s_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=True, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR"]):
+    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+    ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
 
-# Plot Fig3: Calibrated Price Error Surfaces
-g1 = sns.heatmap(df_svi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 0], cbar=False, annot=True,
-                 vmin=price_error_surface_min, vmax=price_error_surface_max)
-g2 = sns.heatmap(df_ssvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 1], cbar=False, annot=True,
-                 vmin=price_error_surface_min, vmax=price_error_surface_max)
-g3 = sns.heatmap(df_essvi_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 2], cbar=False, annot=True,
-                 vmin=price_error_surface_min, vmax=price_error_surface_max)
-g4 = sns.heatmap(df_sabr_price_error_surface.values, linewidths=1, cmap='Blues', ax=axs3[1, 3], cbar=True, annot=True,
-                 vmin=price_error_surface_min, vmax=price_error_surface_max)
-for g, ax, name in zip([g1, g2, g3, g4], [axs3[1, 0], axs3[1, 1], axs3[1, 2], axs3[1, 3]], ["SVI", "SSVI", "eSSVI", "SABR"]):
-    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} BS Price Error (in %)", fontsize=title_font_size)
-    g.set_ylabel('')
-    g.set_xlabel('')
-    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
-    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
-
-# Plot Fig4: Calibrated Volatility Skew Surfaces (SVI, SSVI, Min)
+# Figure 4 - "3_Calibrated Volatility Skew"
+fig_rows = fig4.subfigures(nrows=2, ncols=1)
 skew_min = min(skew_surface_min, smin_surface_min)
 skew_max = max(skew_surface_max, smin_surface_max)
-g1 = sns.heatmap(df_svi_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 0], cbar=False, annot=True,
-                 vmin=skew_min, vmax=skew_max)
-g2 = sns.heatmap(df_ssvi_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 1], cbar=False, annot=True,
-                 vmin=skew_min, vmax=skew_max)
-g3 = sns.heatmap(df_smin_surface.values, linewidths=1, cmap='Blues', ax=axs4[0, 2], cbar=True, annot=True,
-                 vmin=skew_min, vmax=skew_max)
-for g, ax, name in zip([g1, g2, g3], [axs4[0, 0], axs4[0, 1], axs4[0, 2]], ["SVI", "SSVI", "Min Bound"]):
+# Figure 4 - Row 1 - ""
+fig_row = fig_rows[0]
+fig_row.suptitle(f'', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=5, sharey=True)
+g1 = sns.heatmap(df_svi_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+g2 = sns.heatmap(df_ssvi_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[1], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+g3 = sns.heatmap(df_essvi_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[2], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+g4 = sns.heatmap(df_sabr_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+g5 = sns.heatmap(df_zabr_s_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=True, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+# Figure 4 - Row 2 - ""
+fig_row = fig_rows[1]
+fig_row.suptitle(f'', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=4, sharey=True)
 
-# Plot Fig4: Calibrated Volatility Skew Surfaces (eSSVI, SABR, Max)
-g1 = sns.heatmap(df_essvi_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 0], cbar=False, annot=True,
-                 vmin=skew_min, vmax=skew_max)
-g2 = sns.heatmap(df_sabr_skew_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 1], cbar=False, annot=True,
-                 vmin=skew_min, vmax=skew_max)
-g3 = sns.heatmap(df_smax_surface.values, linewidths=1, cmap='Blues', ax=axs4[1, 2], cbar=True, annot=True,
-                 vmin=skew_min, vmax=skew_max)
-for g, ax, name in zip([g1, g2, g3], [axs4[1, 0], axs4[1, 1], axs4[1, 2]], ["eSSVI", "SABR", "Max Bound"]):
+# Figure 5 - "3_Shark-Jaw_Arbitograms"
+fig_rows = fig5.subfigures(nrows=2, ncols=1)
+# Figure 5 - Row 1 - "Shark-Jaw Arbitograms"
+fig_row = fig_rows[0]
+fig_row.suptitle(f'Skew Bounds', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[1], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[2], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g4 = sns.heatmap(df_sabr_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g5 = sns.heatmap(df_zabr_s_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
-
-# Plot Fig5: Shark-Jaw Arbitogram Surfaces (Skew Bounds)
-g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 0], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 1], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 2], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-g4 = sns.heatmap(df_sabr_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[0, 3], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-for g, ax, name in zip([g1, g2, g3, g4], [axs5[0, 0], axs5[0, 1], axs5[0, 2], axs5[0, 3]], ["SVI", "SSVI", "eSSVI", "SABR"]):
+# Figure 5 - Row 2 - "Shark-Jaw Arbitograms"
+fig_row = fig_rows[1]
+fig_row.suptitle(f'Call/Put Triangles', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[1], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[2], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g4 = sns.heatmap(df_sabr_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+g5 = sns.heatmap(df_zabr_s_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Skew Bounds", fontsize=title_font_size)
-    g.set_ylabel('')
-    g.set_xlabel('')
-    g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
-    g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
-
-# Plot Fig5: Shark-Jaw Arbitogram Surfaces (Call/Put Triangles)
-g1 = sns.heatmap(df_svi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 0], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-g2 = sns.heatmap(df_ssvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 1], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-g3 = sns.heatmap(df_essvi_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 2], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-g4 = sns.heatmap(df_sabr_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=axs5[1, 3], cbar=False, annot=True,
-                 vmin=-1, vmax=1)
-for g, ax, name in zip([g1, g2, g3, g4], [axs5[1, 0], axs5[1, 1], axs5[1, 2], axs5[1, 3]], ["SVI", "SSVI", "eSSVI", "SABR"]):
-    ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
-    ax.set_title(f"{name} Call/Put Triangles", fontsize=title_font_size)
+    ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
@@ -850,7 +951,7 @@ print(f"{timer_id}/ Results Exported + Graphs Built ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
-# Display ACA Scores
+# Display Scores
 print("\nACA Scores (Skew Bounds) :")
 print(df_aca_skew_bounds)
 print("\nACA Scores (Call/Put Triangles) :")
