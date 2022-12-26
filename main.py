@@ -20,8 +20,8 @@ timer_id = 1
 spot = 3375.46
 min_volume = 10
 nb_options = []
-tick_font_size = 8.5
-title_font_size = 11
+tick_font_size = 6.5
+title_font_size = 9
 nb_options_text = []
 legend_loc = "upper right"
 use_durrleman_cond = False
@@ -309,6 +309,26 @@ ZABR_db_params = calibration.ZABR_double_beta_calibration(
 )
 df['ZABR_db Params'] = [ZABR_db_params] * len(df.index)
 
+# Calibrate Double ZABR Surface
+ZABR_d_params = calibration.ZABR_double_calibration(
+    X0_list=list(df["Spot Perc"]),
+    K_list=list(df["Strike Perc"]),
+    vol_list=list(df["ATM Implied Vol"]),
+    mktImpVol_list=list(df["Implied Vol"]),
+    weights_list=list(df["Weight"]),
+    use_durrleman_cond=use_durrleman_cond,
+)
+df['ZABR_d Params'] = [ZABR_d_params] * len(df.index)
+print(ZABR_d_params)
+ZABR_d_params = {
+        "eta_": 0.96,
+        "rho_": -0.5,
+        "beta1_": -1,
+        "beta2_": -0.5,
+        "phi0_": 1.5,
+        "d_": 0.1,
+    }
+
 # Timer
 end = time.perf_counter()
 print(f"{timer_id}/ SVI, SSVI, eSSVI, SABR & ZABR Calibrated ({round(end - start, 1)}s)")
@@ -349,9 +369,14 @@ df["ZABR_db TV"] = df.apply(lambda x:
                                                       eta_=ZABR_db_params["eta_"], rho_=ZABR_db_params["rho_"],
                                                       beta1_=ZABR_db_params["beta1_"], beta2_=ZABR_db_params["beta2_"],
                                                       lambda_=ZABR_db_params["lambda_"]), 2) * x["Maturity (in Y)"], axis=1)
+df["ZABR_d TV"] = df.apply(lambda x:
+                          pow(calibration.ZABR_double(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATM Implied Vol"],
+                                                      eta_=ZABR_d_params["eta_"], rho_=ZABR_d_params["rho_"],
+                                                      beta1_=ZABR_d_params["beta1_"], beta2_=ZABR_d_params["beta2_"],
+                                                      phi0_=ZABR_d_params["phi0_"], d_=ZABR_d_params["d_"]), 2) * x["Maturity (in Y)"], axis=1)
 
 # Compute BS Absolute Volatility & BS Price Errors (in %)
-for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"]:
     df[f"{surface} Vol"] = df.apply(lambda x: np.sqrt(x[f"{surface} TV"] / x["Maturity (in Y)"]), axis=1)
     df[f"{surface} Vol Error Perc"] = df.apply(lambda x: abs(x[f"{surface} Vol"] - x["Implied Vol"]) * 100, axis=1)
     df[f"{surface} Price Error Perc"] = \
@@ -372,8 +397,10 @@ df_zabr_s_vol_error_surface, zabr_s_min, zabr_s_max = utils.create_surface(df=df
                                                                         strike_list=strike_list)
 df_zabr_db_vol_error_surface, zabr_db_min, zabr_db_max = utils.create_surface(df=df, column_name="ZABR_db Vol Error Perc",
                                                                         strike_list=strike_list)
-vol_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min, zabr_db_min)
-vol_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max, zabr_s_max, zabr_db_max)
+df_zabr_d_vol_error_surface, zabr_d_min, zabr_d_max = utils.create_surface(df=df, column_name="ZABR_d Vol Error Perc",
+                                                                        strike_list=strike_list)
+vol_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min, zabr_db_min, zabr_d_min)
+vol_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max, zabr_s_max, zabr_db_max, zabr_d_min)
 
 # Compute Absolute BS Price Error Surfaces
 df_svi_price_error_surface, svi_min, svi_max = utils.create_surface(df=df, column_name="SVI Price Error Perc",
@@ -388,8 +415,10 @@ df_zabr_s_price_error_surface, zabr_s_min, zabr_s_max = utils.create_surface(df=
                                                                           strike_list=strike_list)
 df_zabr_db_price_error_surface, zabr_db_min, zabr_db_max = utils.create_surface(df=df, column_name="ZABR_db Price Error Perc",
                                                                           strike_list=strike_list)
-price_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min, zabr_db_min)
-price_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max, zabr_s_max, zabr_db_max)
+df_zabr_d_price_error_surface, zabr_d_min, zabr_d_max = utils.create_surface(df=df, column_name="ZABR_d Price Error Perc",
+                                                                          strike_list=strike_list)
+price_error_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min, zabr_d_min)
+price_error_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_max, zabr_s_max, zabr_d_max)
 
 # Timer
 end = time.perf_counter()
@@ -434,6 +463,14 @@ df["ZABR_db Skew"] = df.apply(lambda x:
                                                                beta1_=ZABR_db_params["beta1_"],
                                                                beta2_=ZABR_db_params["beta2_"],
                                                                lambda_=ZABR_db_params["lambda_"]), axis=1)
+df["ZABR_d Skew"] = df.apply(lambda x:
+                             calibration.ZABR_double_skew(X0=x["Spot Perc"], K=x["Strike Perc"],
+                                                               vol=x["ATM Implied Vol"], eta_=ZABR_d_params["eta_"],
+                                                               rho_=ZABR_d_params["rho_"],
+                                                               beta1_=ZABR_d_params["beta1_"],
+                                                               beta2_=ZABR_d_params["beta2_"],
+                                                               phi0_=ZABR_d_params["phi0_"],
+                                                               d_=ZABR_d_params["d_"],), axis=1)
 
 # Compute Skew Surfaces
 df_svi_skew_surface, svi_min, svi_max = utils.create_surface(
@@ -448,8 +485,10 @@ df_zabr_s_skew_surface, zabr_s_min, zabr_s_max = utils.create_surface(
     df=df, column_name="ZABR_s Skew", strike_list=strike_list)
 df_zabr_db_skew_surface, zabr_db_min, zabr_db_max = utils.create_surface(
     df=df, column_name="ZABR_db Skew", strike_list=strike_list)
-skew_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min, zabr_db_min)
-skew_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_min, zabr_s_max, zabr_db_min)
+df_zabr_d_skew_surface, zabr_d_min, zabr_d_max = utils.create_surface(
+    df=df, column_name="ZABR_d Skew", strike_list=strike_list)
+skew_surface_min = min(svi_min, ssvi_min, essvi_min, sabr_min, zabr_s_min, zabr_db_min, zabr_d_min)
+skew_surface_max = max(svi_max, ssvi_max, essvi_max, sabr_min, zabr_s_max, zabr_db_max, zabr_d_max)
 
 # Compute Call/Put Bis Mid Price (Call-Put Parity)
 df["Call Bis Type"] = "Call"
@@ -499,13 +538,13 @@ smin_surface_min = min(smin_min, smax_min)
 smin_surface_max = max(smin_max, smax_max)
 
 # Compute Shark-Jaw Skew Bounds Test
-for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"]:
     df[f"{surface} Bounds Test"] = df.apply(lambda x: 0 if x["s_min"] < x[f"{surface} Skew"] < x["s_max"]
                                                         else 1, axis=1)
 
 # Compute Absolute Calibration Arbitrability Scores (ACA Skew Bounds)
 df_aca_skew_bounds = pd.DataFrame(index=df["Pretty Maturity"].unique(),
-                                  columns=["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"])
+                                  columns=["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"])
 for col in df_aca_skew_bounds.columns:
     for maturity in df["Pretty Maturity"].unique():
         df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
@@ -525,15 +564,17 @@ df_zabr_s_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="ZABR_s Bounds Test", strike_list=strike_list)
 df_zabr_db_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="ZABR_db Bounds Test", strike_list=strike_list)
+df_zabr_d_bounds_arb_surface, arb_min, arb_max = utils.create_surface(
+    df=df, column_name="ZABR_d Bounds Test", strike_list=strike_list)
 
 # Compute European Binary Prices (BEUI/BEDI)
-for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"]:
     df[f"{surface} BEUI"] = df.apply(lambda x: - (x["Call Bis Delta Strike"] +
                                                   x["Call Bis Vega"] * x[f"{surface} Skew"]), axis=1)
     df[f"{surface} BEDI"] = 1 - df[f"{surface} BEUI"]
 
 # Compute Call/Put Triangles
-for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"]:
     for maturity in df["Maturity"].unique():
         cond = (df["Maturity"] == maturity)
         df_bis = df[cond].copy()
@@ -545,7 +586,7 @@ for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
                 df_bis["Strike Perc"].shift(-1) - df_bis["Strike Perc"]) * df_bis[f"{surface} BEDI"]
 
 # Compute Shark-Jaw Call/Put Triangles Test
-for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
+for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"]:
     df[f"{surface} Triangles Test"] = df.apply(lambda x: 0
         if (x[f"{surface} CT"] > 0 and x[f"{surface} PT"] > 0) else 0
             if (pd.isna(x[f"{surface} CT"]) and x[f"{surface} PT"] > 0) else 0
@@ -553,7 +594,7 @@ for surface in ["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"]:
 
 # Compute Absolute Calibration Arbitrability Scores (ACA Call/Put Triangles)
 df_aca_call_triangles = pd.DataFrame(index=df["Pretty Maturity"].unique(),
-                                     columns=["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db"])
+                                     columns=["SVI", "SSVI", "eSSVI", "SABR", "ZABR_s", "ZABR_db", "ZABR_d"])
 for col in df_aca_call_triangles.columns:
     for maturity in df["Pretty Maturity"].unique():
         df_bis = df[(df["Pretty Maturity"] == maturity)].copy()
@@ -573,6 +614,8 @@ df_zabr_s_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="ZABR_s Triangles Test", strike_list=strike_list)
 df_zabr_db_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
     df=df, column_name="ZABR_db Triangles Test", strike_list=strike_list)
+df_zabr_d_triangles_arb_surface, arb_min, arb_max = utils.create_surface(
+    df=df, column_name="ZABR_d Triangles Test", strike_list=strike_list)
 
 # Timer
 end = time.perf_counter()
@@ -581,7 +624,7 @@ start = end
 timer_id = timer_id + 1
 
 # Set Log Forward Moneyness List
-k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 150)
+k_list = np.linspace(log_forward_moneyness_min, log_forward_moneyness_max, 200)
 
 # Create Graphs Figure
 fig1 = plt.figure(figsize=(15, 7.5))
@@ -598,7 +641,7 @@ fig_row.suptitle(f'', fontweight="bold")
 fig_row_axs = fig_row.subplots(nrows=1, ncols=3)
 # Figure 1 - Row 1 - Col 1 - "Number of Options Per Steps"
 ax = fig_row_axs[0]
-nb_options_text.append("Final")
+nb_options_text.append("Calibration")
 nb_options.append(nb_options[-1])
 ax.step(nb_options_text, nb_options, "--", where='post')
 ax.set_title("Option Number Per Steps", fontsize=title_font_size)
@@ -770,6 +813,21 @@ ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("ZABR Double Beta", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 7 - Double ZABR
 ax = fig_row_axs[6]
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    tv_list = [
+        pow(calibration.ZABR_double(
+            X0=1, K=forward * np.exp(k), vol=atm_vol, eta_=ZABR_d_params["eta_"], rho_=ZABR_d_params["rho_"],
+            beta1_=ZABR_d_params["beta1_"], beta2_=ZABR_d_params["beta2_"], phi0_=ZABR_d_params["phi0_"],
+            d_=ZABR_d_params["d_"]), 2) * maturity for k in k_list]
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Double ZABR", fontsize=title_font_size)
 # Figure 2 - Row 2 - "Durrleman Density"
 fig_row = fig_rows[1]
 fig_row.suptitle(f'Durrleman Density', fontweight="bold")
@@ -855,6 +913,22 @@ ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("ZABR Double Beta", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 7 - Double ZABR Double
 ax = fig_row_axs[6]
+for maturity in df["Maturity"].unique():
+    df_bis = df[(df["Maturity"] == maturity)].copy()
+    maturity = list(df_bis["Maturity (in Y)"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    k_list, g_list = calibration.ZABR_double_Durrleman_Condition(f=forward, T=maturity, X0=1, vol=atm_vol,
+                                                                      eta_=ZABR_d_params["eta_"],
+                                                                      rho_=ZABR_d_params["rho_"],
+                                                                      beta1_=ZABR_d_params["beta1_"],
+                                                                      beta2_=ZABR_d_params["beta2_"],
+                                                                      phi0_=ZABR_d_params["phi0_"],
+                                                                      d_=ZABR_d_params["d_"])
+    ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
+ax.grid()
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Double ZABR", fontsize=title_font_size)
 # Figure 2 - Legend
 lines, labels = fig2.subfigs[0].axes[0].get_legend_handles_labels()
 fig_rows[0].subplots_adjust(bottom=0.12, left=0.05, right=0.95)
@@ -877,11 +951,13 @@ g4 = sns.heatmap(df_sabr_vol_error_surface.values, linewidths=1, cmap='Blues', a
                  vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
 g5 = sns.heatmap(df_zabr_s_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=False, annot=True,
                  vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
-g6 = sns.heatmap(df_zabr_db_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=True, annot=True,
+g6 = sns.heatmap(df_zabr_db_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=False, annot=True,
                  vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
-for g, ax, name in zip([g1, g2, g3, g4, g5, g6],
-                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5]],
-                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta"]):
+g7 = sns.heatmap(df_zabr_d_vol_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[6], cbar=False, annot=True,
+                 vmin=vol_error_surface_min, vmax=vol_error_surface_max, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5, g6, g7],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5], fig_row_axs[6]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta", "Double ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
@@ -902,17 +978,21 @@ g4 = sns.heatmap(df_sabr_price_error_surface.values, linewidths=1, cmap='Blues',
                  vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
 g5 = sns.heatmap(df_zabr_s_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=False, annot=True,
                  vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
-g6 = sns.heatmap(df_zabr_db_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=True, annot=True,
+g6 = sns.heatmap(df_zabr_db_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=False, annot=True,
                  vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
-for g, ax, name in zip([g1, g2, g3, g4, g5, g6],
-                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5]],
-                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta"]):
+g7 = sns.heatmap(df_zabr_d_price_error_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[6], cbar=False, annot=True,
+                 vmin=price_error_surface_min, vmax=price_error_surface_max, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5, g6, g7],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5], fig_row_axs[6]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta", "Double ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+fig_rows[0].subplots_adjust(left=0.05, right=0.97)
+fig_rows[1].subplots_adjust(left=0.05, right=0.97)
 
 # Figure 4 - "3_Calibrated Volatility Skew"
 fig_rows = fig4.subfigures(nrows=2, ncols=1)
@@ -930,7 +1010,7 @@ g3 = sns.heatmap(df_essvi_skew_surface.values, linewidths=1, cmap='Blues', ax=fi
                  vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
 g4 = sns.heatmap(df_sabr_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
                  vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
-g5 = sns.heatmap(df_zabr_s_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=True, annot=True,
+g5 = sns.heatmap(df_zabr_s_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=False, annot=True,
                  vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
 for g, ax, name in zip([g1, g2, g3, g4, g5],
                        [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4]],
@@ -945,17 +1025,26 @@ for g, ax, name in zip([g1, g2, g3, g4, g5],
 fig_row = fig_rows[1]
 fig_row.suptitle(f'', fontweight="bold")
 fig_row_axs = fig_row.subplots(nrows=1, ncols=4, sharey=True)
-g1 = sns.heatmap(df_zabr_db_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=True, annot=True,
+g1 = sns.heatmap(df_zabr_db_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[0], cbar=False, annot=True,
                  vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
-for g, ax, name in zip([g1],
-                       [fig_row_axs[0]],
-                       ["ZABR Double Beta"]):
+g2 = sns.heatmap(df_zabr_d_skew_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[1], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+g3 = sns.heatmap(df_smin_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[2], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+g4 = sns.heatmap(df_smax_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[3], cbar=False, annot=True,
+                 vmin=skew_min, vmax=skew_max, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3]],
+                       ["ZABR Double Beta", "Double ZABR", "Min", "Max"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+fig_rows[0].subplots_adjust(left=0.05, right=0.97)
+fig_rows[1].subplots_adjust(left=0.05, right=0.97)
+
 # Figure 5 - "3_Shark-Jaw_Arbitograms"
 fig_rows = fig5.subfigures(nrows=2, ncols=1)
 # Figure 5 - Row 1 - "Skew Bounds Arbitograms"
@@ -974,9 +1063,11 @@ g5 = sns.heatmap(df_zabr_s_bounds_arb_surface.values, linewidths=1, cmap='Blues'
                  vmin=-1, vmax=1, annot_kws={"size": 6})
 g6 = sns.heatmap(df_zabr_db_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=False, annot=True,
                  vmin=-1, vmax=1, annot_kws={"size": 6})
-for g, ax, name in zip([g1, g2, g3, g4, g5, g6],
-                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5]],
-                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta"]):
+g7 = sns.heatmap(df_zabr_d_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[6], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5, g6, g7],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5], fig_row_axs[6]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta", "Double ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
@@ -997,17 +1088,21 @@ g4 = sns.heatmap(df_sabr_bounds_arb_surface.values, linewidths=1, cmap='Blues', 
                  vmin=-1, vmax=1, annot_kws={"size": 6})
 g5 = sns.heatmap(df_zabr_s_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[4], cbar=False, annot=True,
                  vmin=-1, vmax=1, annot_kws={"size": 6})
-g6 = sns.heatmap(df_zabr_s_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=False, annot=True,
+g6 = sns.heatmap(df_zabr_db_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[5], cbar=False, annot=True,
                  vmin=-1, vmax=1, annot_kws={"size": 6})
-for g, ax, name in zip([g1, g2, g3, g4, g5, g6],
-                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5]],
-                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta"]):
+g7 = sns.heatmap(df_zabr_d_bounds_arb_surface.values, linewidths=1, cmap='Blues', ax=fig_row_axs[6], cbar=False, annot=True,
+                 vmin=-1, vmax=1, annot_kws={"size": 6})
+for g, ax, name in zip([g1, g2, g3, g4, g5, g6, g7],
+                       [fig_row_axs[0], fig_row_axs[1], fig_row_axs[2], fig_row_axs[3], fig_row_axs[4], fig_row_axs[5], fig_row_axs[6]],
+                       ["SVI", "SSVI", "eSSVI", "SABR", "Simple ZABR", "ZABR Double Beta", "Double ZABR"]):
     ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
     ax.set_title(f"{name}", fontsize=title_font_size)
     g.set_ylabel('')
     g.set_xlabel('')
     g.set_xticklabels(df["Pretty Maturity"].unique(), rotation=0)
     g.set_yticklabels([f"{int(strike / spot * 100)}%" for strike in strike_list], rotation=0)
+fig_rows[0].subplots_adjust(left=0.05, right=0.97)
+fig_rows[1].subplots_adjust(left=0.05, right=0.97)
 
 # Export Dataframes in Results Folder
 if not os.path.exists('results'):
