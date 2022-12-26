@@ -319,15 +319,6 @@ ZABR_d_params = calibration.ZABR_double_calibration(
     use_durrleman_cond=use_durrleman_cond,
 )
 df['ZABR_d Params'] = [ZABR_d_params] * len(df.index)
-print(ZABR_d_params)
-ZABR_d_params = {
-        "eta_": 0.96,
-        "rho_": -0.5,
-        "beta1_": -1,
-        "beta2_": -0.5,
-        "phi0_": 1.5,
-        "d_": 0.1,
-    }
 
 # Timer
 end = time.perf_counter()
@@ -842,6 +833,7 @@ for maturity in df["Maturity"].unique():
         sigma_=SVI_params["sigma_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("SVI", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 2 - SSVI
@@ -853,6 +845,7 @@ for maturity in df["Maturity"].unique():
         theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"], lambda_=SSVI_params["lambda_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("SSVI", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 3 - eSSVI
@@ -865,6 +858,7 @@ for maturity in df["Maturity"].unique():
         eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("eSSVI", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 4 - SABR
@@ -878,6 +872,7 @@ for maturity in df["Maturity"].unique():
                                                           rho_=SABR_params["rho_"], nu_=SABR_params["nu_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("SABR", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 5 - Simple ZABR
@@ -892,6 +887,7 @@ for maturity in df["Maturity"].unique():
                                                                  beta_=ZABR_s_params["beta_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("Simple ZABR", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 6 - ZABR Double Beta
@@ -909,6 +905,7 @@ for maturity in df["Maturity"].unique():
                                                                       lambda_=ZABR_db_params["lambda_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("ZABR Double Beta", fontsize=title_font_size)
 # Figure 2 - Row 2 - Col 7 - Double ZABR Double
@@ -927,6 +924,7 @@ for maturity in df["Maturity"].unique():
                                                                       d_=ZABR_d_params["d_"])
     ax.plot(k_list, g_list, label=list(df_bis["Pretty Maturity"])[0])
 ax.grid()
+ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("Double ZABR", fontsize=title_font_size)
 # Figure 2 - Legend

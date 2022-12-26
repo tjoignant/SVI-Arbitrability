@@ -1069,12 +1069,8 @@ def ZABR_double(X0: float, K: float, vol: float, eta_: float, rho_: float, beta1
         integral = integral_fct_1(X0) - integral_fct_1(K)
     elif X0 > phi0_ and K > phi0_:
         integral = integral_fct_2(X0) - integral_fct_2(K)
-    elif X0 <= phi0_ <= K:
-        integral = integral_fct_1(phi0_) - integral_fct_1(X0) + integral_fct_2(K) - integral_fct_2(phi0_)
-    elif K <= phi0_ <= X0:
-        integral = integral_fct_1(phi0_) - integral_fct_1(K) + integral_fct_2(X0) - integral_fct_2(phi0_)
     else:
-        integral = 0
+        integral = integral_fct_1(phi0_) - integral_fct_1(K) + integral_fct_2(X0) - integral_fct_2(phi0_)
     delta = vol / sigma(X0)
     return (X0 - K) / (ZABR_u(x=pow(delta, -1) * integral, eta_=eta_, rho_=rho_))
 
