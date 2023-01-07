@@ -322,7 +322,7 @@ df['ZABR_d Params'] = [ZABR_d_params] * len(df.index)
 
 # Timer
 end = time.perf_counter()
-print(f"{timer_id}/ SVI, SSVI, eSSVI, SABR & ZABR Calibrated ({round(end - start, 1)}s)")
+print(f"{timer_id}/ SVI, SSVI, eSSVI, SABR & ZABRs Calibrated ({round(end - start, 1)}s)")
 start = end
 timer_id = timer_id + 1
 
@@ -713,7 +713,7 @@ ax.set_title("Market Implied Vegas", fontsize=title_font_size)
 ax.legend(loc=legend_loc)
 
 # Figure 2 - "2_Calibration_Results"
-fig_rows = fig2.subfigures(nrows=2, ncols=1)
+fig_rows = fig2.subfigures(nrows=3, ncols=1)
 # Figure 2 - Row 1 - "Total Variance"
 fig_row = fig_rows[0]
 fig_row.suptitle(f'Total Variance', fontweight="bold")
@@ -908,7 +908,7 @@ ax.grid()
 ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("ZABR Double Beta", fontsize=title_font_size)
-# Figure 2 - Row 2 - Col 7 - Double ZABR Double
+# Figure 2 - Row 2 - Col 7 - Double ZABR
 ax = fig_row_axs[6]
 for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
@@ -927,11 +927,136 @@ ax.grid()
 ax.set_ylim(-0.3, 2.3)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("Double ZABR", fontsize=title_font_size)
+# Figure 2 - Row 3 - "Skew"
+fig_row = fig_rows[2]
+fig_row.suptitle(f'Skew (+ RL Bound)', fontweight="bold")
+fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
+k_list = np.linspace(-1, 2, 200)
+# Figure 2 - Row 3 - Col 1 - SVI
+ax = fig_row_axs[0]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    SVI_params = list(df_bis["SVI Params"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    skew_list = [calibration.SVI_skew(strike=forward*np.exp(k), forward=forward, maturity=maturity, a_=SVI_params["a_"],
+                                      b_=SVI_params["b_"], m_=SVI_params["m_"], rho_=SVI_params["rho_"],
+                                      sigma_=SVI_params["sigma_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SVI", fontsize=title_font_size)
+# Figure 2 - Row 3 - Col 2 - SSVI
+ax = fig_row_axs[1]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    theta = list(df_bis["ATMF Implied TV"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    skew_list = [calibration.SSVI_skew(strike=forward*np.exp(k), theta=theta, forward=forward, maturity=maturity,
+                                       rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
+                                       lambda_=SSVI_params["lambda_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SSVI", fontsize=title_font_size)
+# Figure 2 - Row 3 - Col 3 - eSSVI
+ax = fig_row_axs[2]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    theta = list(df_bis["ATMF Implied TV"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    skew_list = [calibration.eSSVI_skew(strike=forward*np.exp(k), theta=theta, forward=forward, maturity=maturity,
+                                        a_=eSSVI_params["a_"], b_=eSSVI_params["b_"],  c_=eSSVI_params["c_"],
+                                        eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("eSSVI", fontsize=title_font_size)
+# Figure 2 - Row 3 - Col 4 - SABR
+ax = fig_row_axs[3]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    SABR_params = list(df_bis["SABR Params"])[0]
+    forward = list(df_bis["Forward Perc"])[0]
+    skew_list = [calibration.SABR_skew(f=forward, K=forward*np.exp(k), T=maturity, alpha_=SABR_params["alpha_"],
+                                       rho_=SABR_params["rho_"], nu_=SABR_params["nu_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("SABR", fontsize=title_font_size)
+# Figure 2 - Row 3 - Col 5 - Simple ZABR
+ax = fig_row_axs[4]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    skew_list = [calibration.ZABR_simple_skew(X0=1, K=forward*np.exp(k), vol=atm_vol, eta_=ZABR_s_params["eta_"],
+                                              rho_=ZABR_s_params["rho_"], beta_=ZABR_s_params["beta_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Simple ZABR", fontsize=title_font_size)
+# Figure 2 - Row 3 - Col 6 - ZABR Double Beta
+ax = fig_row_axs[5]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    skew_list = [calibration.ZABR_double_beta_skew(X0=1, K=forward*np.exp(k), vol=atm_vol, eta_=ZABR_db_params["eta_"],
+                                                   rho_=ZABR_db_params["rho_"], beta1_=ZABR_db_params["beta1_"],
+                                                   beta2_=ZABR_db_params["beta2_"],
+                                                   lambda_=ZABR_db_params["lambda_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("ZABR Double Beta", fontsize=title_font_size)
+# Figure 2 - Row 3 - Col 7 - Double ZABR
+ax = fig_row_axs[6]
+skew_list = []
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
+    forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    skew_list = [calibration.ZABR_double_skew(X0=1, K=forward*np.exp(k), vol=atm_vol, eta_=ZABR_d_params["eta_"],
+                                              rho_=ZABR_d_params["rho_"], beta1_=ZABR_d_params["beta1_"],
+                                              beta2_=ZABR_d_params["beta2_"], phi0_=ZABR_d_params["phi0_"],
+                                              d_=ZABR_d_params["d_"]) for k in k_list]
+    ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, calibration.Roger_Lee_Condition(k_list=k_list, maturity=maturity), "--", color=color_list[i])
+ax.grid()
+ax.set_ylim(-2.5, 2.5)
+ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
+ax.set_title("Double ZABR", fontsize=title_font_size)
 # Figure 2 - Legend
 lines, labels = fig2.subfigs[0].axes[0].get_legend_handles_labels()
-fig_rows[0].subplots_adjust(bottom=0.12, left=0.05, right=0.95)
-fig_rows[1].subplots_adjust(bottom=0.17)
-fig_rows[1].legend(lines, labels, ncol=len(labels), loc="lower center")
+fig_rows[0].subplots_adjust(bottom=0.10, top=0.83, left=0.05, right=0.95)
+fig_rows[1].subplots_adjust(bottom=0.10, top=0.83, left=0.05, right=0.95)
+fig_rows[2].subplots_adjust(bottom=0.22, top=0.83, left=0.05, right=0.95)
+fig_rows[2].legend(lines, labels, ncol=len(labels), loc="lower center")
 
 # Figure 3 - "3_Calibrated Volatility Error"
 fig_rows = fig3.subfigures(nrows=2, ncols=1)

@@ -11,6 +11,11 @@ def Durrleman_Condition(k_list, tot_var_list, log_forward_skew_list, log_forward
            np.array(log_forward_convexity_list) / 2
 
 
+def Roger_Lee_Condition(k_list, maturity):
+    bounds = np.sqrt(2 * np.abs(k_list) / maturity)
+    return [-bound if k < 0 else bound for bound, k in zip(bounds, k_list)]
+
+
 def SVI(k: float, a_: float, b_: float, rho_: float, m_: float, sigma_: float):
     """
     :param k: log forward moneyness (input)
