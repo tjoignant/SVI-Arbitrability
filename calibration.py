@@ -16,6 +16,10 @@ def Roger_Lee_Condition(k_list, maturity):
     return [-bound if k < 0 else bound for bound, k in zip(bounds, k_list)]
 
 
+def Fukasawa_Condition(k_list, atm_vol):
+    return atm_vol / 2 + np.sqrt(np.power(atm_vol, 2) / 4 + 2 * np.abs(k_list))
+
+
 def SVI(k: float, a_: float, b_: float, rho_: float, m_: float, sigma_: float):
     """
     :param k: log forward moneyness (input)
@@ -964,7 +968,7 @@ def ZABR_double_beta_calibration(X0_list: list, K_list: list, vol_list: list, mk
     :param use_durrleman_cond: add penality if Durrleman condition is not respected (no butterfly arbitrage)
     :return: calibrated parameters dict {eta_, rho_, beta1_, beta2_, lambda_}
     """
-    init_params_list = [0.96, -0.45, -1.4, -1.45, 0.001]
+    init_params_list = [1.02, -0.51, -1.2, -1.25, 0.0001]
     inputs_list = [(X0, K, vol) for X0, K, vol in zip(X0_list, K_list, vol_list)]
     result = optimize.minimize(
         ZABR_double_beta_minimisation_function,

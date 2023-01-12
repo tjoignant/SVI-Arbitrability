@@ -245,7 +245,7 @@ for maturity in df["Maturity"].unique():
     )
     df.loc[df["Maturity"] == maturity, ['SVI Params']] = [SVI_params] * len(df_mat.index)
     interp_function = interp1d(x=df_mat["Strike Perc"], y=df_mat["Implied Vol"], kind='cubic')
-    df.loc[df["Maturity"] == maturity, ['ATM Implied Vol']] = interp_function(1)
+    df.loc[df["Maturity"] == maturity, ['ATM Implied Vol']] = interp_function(1.0)
     df.loc[df["Maturity"] == maturity, ['ATMF Implied Vol']] = interp_function(df_mat["Forward Perc"].values[0])
     df.loc[df["Maturity"] == maturity, ['SVI ATMF Implied TV']] = \
         calibration.SVI(k=0, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
@@ -291,7 +291,7 @@ for maturity in df["Maturity"].unique():
 ZABR_s_params = calibration.ZABR_simple_calibration(
     X0_list=list(df["Spot Perc"]),
     K_list=list(df["Strike Perc"]),
-    vol_list=list(df["ATM Implied Vol"]),
+    vol_list=list(df["ATMF Implied Vol"]),
     mktImpVol_list=list(df["Implied Vol"]),
     weights_list=list(df["Weight"]),
     use_durrleman_cond=use_durrleman_cond,
@@ -302,7 +302,7 @@ df['ZABR_s Params'] = [ZABR_s_params] * len(df.index)
 ZABR_db_params = calibration.ZABR_double_beta_calibration(
     X0_list=list(df["Spot Perc"]),
     K_list=list(df["Strike Perc"]),
-    vol_list=list(df["ATM Implied Vol"]),
+    vol_list=list(df["ATMF Implied Vol"]),
     mktImpVol_list=list(df["Implied Vol"]),
     weights_list=list(df["Weight"]),
     use_durrleman_cond=use_durrleman_cond,
@@ -313,7 +313,7 @@ df['ZABR_db Params'] = [ZABR_db_params] * len(df.index)
 ZABR_d_params = calibration.ZABR_double_calibration(
     X0_list=list(df["Spot Perc"]),
     K_list=list(df["Strike Perc"]),
-    vol_list=list(df["ATM Implied Vol"]),
+    vol_list=list(df["ATMF Implied Vol"]),
     mktImpVol_list=list(df["Implied Vol"]),
     weights_list=list(df["Weight"]),
     use_durrleman_cond=use_durrleman_cond,
@@ -352,16 +352,16 @@ df["eSSVI TV"] = df.apply(lambda x:
                                             a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                                             eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]), axis=1)
 df["ZABR_s TV"] = df.apply(lambda x:
-                          pow(calibration.ZABR_simple(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATM Implied Vol"],
+                          pow(calibration.ZABR_simple(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATMF Implied Vol"],
                                                   eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
                                                   beta_=ZABR_s_params["beta_"]), 2) * x["Maturity (in Y)"], axis=1)
 df["ZABR_db TV"] = df.apply(lambda x:
-                          pow(calibration.ZABR_double_beta(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATM Implied Vol"],
+                          pow(calibration.ZABR_double_beta(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATMF Implied Vol"],
                                                       eta_=ZABR_db_params["eta_"], rho_=ZABR_db_params["rho_"],
                                                       beta1_=ZABR_db_params["beta1_"], beta2_=ZABR_db_params["beta2_"],
                                                       lambda_=ZABR_db_params["lambda_"]), 2) * x["Maturity (in Y)"], axis=1)
 df["ZABR_d TV"] = df.apply(lambda x:
-                          pow(calibration.ZABR_double(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATM Implied Vol"],
+                          pow(calibration.ZABR_double(X0=x["Spot Perc"], K=x["Strike Perc"], vol=x["ATMF Implied Vol"],
                                                       eta_=ZABR_d_params["eta_"], rho_=ZABR_d_params["rho_"],
                                                       beta1_=ZABR_d_params["beta1_"], beta2_=ZABR_d_params["beta2_"],
                                                       phi0_=ZABR_d_params["phi0_"], d_=ZABR_d_params["d_"]), 2) * x["Maturity (in Y)"], axis=1)
@@ -444,19 +444,19 @@ df["eSSVI Skew"] = df.apply(lambda x:
                                                    c_=eSSVI_params["c_"], ), axis=1)
 df["ZABR_s Skew"] = df.apply(lambda x:
                              calibration.ZABR_simple_skew(X0=x["Spot Perc"], K=x["Strike Perc"],
-                                                          vol=x["ATM Implied Vol"], eta_=ZABR_s_params["eta_"],
+                                                          vol=x["ATMF Implied Vol"], eta_=ZABR_s_params["eta_"],
                                                           rho_=ZABR_s_params["rho_"], beta_=ZABR_s_params["beta_"]),
                                                           axis=1)
 df["ZABR_db Skew"] = df.apply(lambda x:
                              calibration.ZABR_double_beta_skew(X0=x["Spot Perc"], K=x["Strike Perc"],
-                                                               vol=x["ATM Implied Vol"], eta_=ZABR_db_params["eta_"],
+                                                               vol=x["ATMF Implied Vol"], eta_=ZABR_db_params["eta_"],
                                                                rho_=ZABR_db_params["rho_"],
                                                                beta1_=ZABR_db_params["beta1_"],
                                                                beta2_=ZABR_db_params["beta2_"],
                                                                lambda_=ZABR_db_params["lambda_"]), axis=1)
 df["ZABR_d Skew"] = df.apply(lambda x:
                              calibration.ZABR_double_skew(X0=x["Spot Perc"], K=x["Strike Perc"],
-                                                               vol=x["ATM Implied Vol"], eta_=ZABR_d_params["eta_"],
+                                                               vol=x["ATMF Implied Vol"], eta_=ZABR_d_params["eta_"],
                                                                rho_=ZABR_d_params["rho_"],
                                                                beta1_=ZABR_d_params["beta1_"],
                                                                beta2_=ZABR_d_params["beta2_"],
@@ -716,107 +716,135 @@ ax.legend(loc=legend_loc)
 fig_rows = fig2.subfigures(nrows=3, ncols=1)
 # Figure 2 - Row 1 - "Total Variance"
 fig_row = fig_rows[0]
-fig_row.suptitle(f'Total Variance', fontweight="bold")
+fig_row.suptitle(f'Total Variance (+ Fukasawa Bound)', fontweight="bold")
 fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
 # Figure 2 - Row 1 - Col 1 - SVI
 ax = fig_row_axs[0]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     SVI_params = list(df_bis["SVI Params"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [calibration.SVI(k=k, a_=SVI_params["a_"], b_=SVI_params["b_"], rho_=SVI_params["rho_"],
                                 m_=SVI_params["m_"], sigma_=SVI_params["sigma_"]) for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("SVI", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 2 - SSVI
 ax = fig_row_axs[1]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [calibration.SSVI(k=k, theta=theta, rho_=SSVI_params["rho_"], eta_=SSVI_params["eta_"],
                                   lambda_=SSVI_params["lambda_"]) for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("SSVI", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 3 - eSSVI
 ax = fig_row_axs[2]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     theta = list(df_bis["ATMF Implied TV"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [
         calibration.eSSVI(k=k, theta=theta, a_=eSSVI_params["a_"], b_=eSSVI_params["b_"], c_=eSSVI_params["c_"],
                           eta_=eSSVI_params["eta_"], lambda_=eSSVI_params["lambda_"]) for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("eSSVI", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 4 - SABR
 ax = fig_row_axs[3]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     SABR_params = list(df_bis["SABR Params"])[0]
-    maturity = list(df_bis["Maturity (in Y)"])[0]
     forward = list(df_bis["Forward Perc"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [pow(calibration.SABR(f=forward, K=forward * np.exp(k), T=maturity, alpha_=SABR_params["alpha_"],
                                 rho_=SABR_params["rho_"], nu_=SABR_params["nu_"]), 2) * maturity for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("SABR", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 5 - Simple ZABR
 ax = fig_row_axs[4]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
-    maturity = list(df_bis["Maturity (in Y)"])[0]
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [
         pow(calibration.ZABR_simple(
             X0=1, K=forward * np.exp(k), vol=atm_vol, eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
             beta_=ZABR_s_params["beta_"]), 2) * maturity for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("Simple ZABR", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 6 - ZABR Double Beta
 ax = fig_row_axs[5]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
-    maturity = list(df_bis["Maturity (in Y)"])[0]
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [
         pow(calibration.ZABR_double_beta(
             X0=1, K=forward * np.exp(k), vol=atm_vol, eta_=ZABR_db_params["eta_"], rho_=ZABR_db_params["rho_"],
             beta1_=ZABR_db_params["beta1_"], beta2_=ZABR_db_params["beta2_"], lambda_=ZABR_db_params["lambda_"]), 2)
         * maturity for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("ZABR Double Beta", fontsize=title_font_size)
 # Figure 2 - Row 1 - Col 7 - Double ZABR
 ax = fig_row_axs[6]
-for maturity in df["Maturity"].unique():
-    df_bis = df[(df["Maturity"] == maturity)].copy()
-    maturity = list(df_bis["Maturity (in Y)"])[0]
+for i in range(0, len(df["Maturity (in Y)"].unique())):
+    maturity = df["Maturity (in Y)"].unique()[i]
+    df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     tv_list = [
         pow(calibration.ZABR_double(
             X0=1, K=forward * np.exp(k), vol=atm_vol, eta_=ZABR_d_params["eta_"], rho_=ZABR_d_params["rho_"],
             beta1_=ZABR_d_params["beta1_"], beta2_=ZABR_d_params["beta2_"], phi0_=ZABR_d_params["phi0_"],
             d_=ZABR_d_params["d_"]), 2) * maturity for k in k_list]
-    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0])
-    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+")
+    ax.plot(k_list, tv_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
+    ax.plot(k_list, np.power(calibration.Fukasawa_Condition(k_list=k_list, atm_vol=atm_vol), 2) * maturity, "--",
+            color=color_list[i])
+    ax.scatter(list(df_bis["Log Forward Moneyness"]), list(df_bis["Implied TV"]), marker="+", color=color_list[i])
 ax.grid()
+ax.set_ylim(-0.01, 0.21)
 ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("Double ZABR", fontsize=title_font_size)
 # Figure 2 - Row 2 - "Durrleman Density"
@@ -881,7 +909,7 @@ for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     maturity = list(df_bis["Maturity (in Y)"])[0]
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     k_list, g_list = calibration.ZABR_simple_Durrleman_Condition(f=forward, T=maturity, X0=1, vol=atm_vol,
                                                                  eta_=ZABR_s_params["eta_"], rho_=ZABR_s_params["rho_"],
                                                                  beta_=ZABR_s_params["beta_"])
@@ -896,7 +924,7 @@ for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     maturity = list(df_bis["Maturity (in Y)"])[0]
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     k_list, g_list = calibration.ZABR_double_beta_Durrleman_Condition(f=forward, T=maturity, X0=1, vol=atm_vol,
                                                                       eta_=ZABR_db_params["eta_"],
                                                                       rho_=ZABR_db_params["rho_"],
@@ -914,7 +942,7 @@ for maturity in df["Maturity"].unique():
     df_bis = df[(df["Maturity"] == maturity)].copy()
     maturity = list(df_bis["Maturity (in Y)"])[0]
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     k_list, g_list = calibration.ZABR_double_Durrleman_Condition(f=forward, T=maturity, X0=1, vol=atm_vol,
                                                                       eta_=ZABR_d_params["eta_"],
                                                                       rho_=ZABR_d_params["rho_"],
@@ -929,7 +957,7 @@ ax.tick_params(axis='both', which='major', labelsize=tick_font_size)
 ax.set_title("Double ZABR", fontsize=title_font_size)
 # Figure 2 - Row 3 - "Skew"
 fig_row = fig_rows[2]
-fig_row.suptitle(f'Skew (+ RL Bound)', fontweight="bold")
+fig_row.suptitle(f'Skew (+ Lee Bound)', fontweight="bold")
 fig_row_axs = fig_row.subplots(nrows=1, ncols=7, sharey=True)
 k_list = np.linspace(-1, 2, 200)
 # Figure 2 - Row 3 - Col 1 - SVI
@@ -1006,7 +1034,7 @@ for i in range(0, len(df["Maturity (in Y)"].unique())):
     maturity = df["Maturity (in Y)"].unique()[i]
     df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     skew_list = [calibration.ZABR_simple_skew(X0=1, K=forward*np.exp(k), vol=atm_vol, eta_=ZABR_s_params["eta_"],
                                               rho_=ZABR_s_params["rho_"], beta_=ZABR_s_params["beta_"]) for k in k_list]
     ax.plot(k_list, skew_list, label=list(df_bis["Pretty Maturity"])[0], color=color_list[i])
@@ -1022,7 +1050,7 @@ for i in range(0, len(df["Maturity (in Y)"].unique())):
     maturity = df["Maturity (in Y)"].unique()[i]
     df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     skew_list = [calibration.ZABR_double_beta_skew(X0=1, K=forward*np.exp(k), vol=atm_vol, eta_=ZABR_db_params["eta_"],
                                                    rho_=ZABR_db_params["rho_"], beta1_=ZABR_db_params["beta1_"],
                                                    beta2_=ZABR_db_params["beta2_"],
@@ -1040,7 +1068,7 @@ for i in range(0, len(df["Maturity (in Y)"].unique())):
     maturity = df["Maturity (in Y)"].unique()[i]
     df_bis = df[(df["Maturity (in Y)"] == maturity)].copy()
     forward = list(df_bis["Forward Perc"])[0]
-    atm_vol = list(df_bis["ATM Implied Vol"])[0]
+    atm_vol = list(df_bis["ATMF Implied Vol"])[0]
     skew_list = [calibration.ZABR_double_skew(X0=1, K=forward*np.exp(k), vol=atm_vol, eta_=ZABR_d_params["eta_"],
                                               rho_=ZABR_d_params["rho_"], beta1_=ZABR_d_params["beta1_"],
                                               beta2_=ZABR_d_params["beta2_"], phi0_=ZABR_d_params["phi0_"],
